@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>支払い</title>
+        <meta charset="utf-8">
+        <!-- <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.5.2/jquery.min.js"></script>
+        <script src="../external/jquery.qrcode.min.js"></script>
+        <script type="text/JavaScript">
+        $(function () {
+            $("#qrcode").html("");
+            jQuery("#qrcode").qrcode("<%= invoice %>");
+        });
+        </script> -->
+        
+    </head>
+    <body>
+        <!-- <div id="qrcode"></div> -->
+        <img src="https://chart.googleapis.com/chart?cht=qr&chs=200x200&chco=000000&chl=<%= invoice %>"/>
+        <p><%= invoice %></p>
+        <p>invoice有効期限カウントダウン</p>
+        <input type="button" onclick="location.href='/fin_payment'"  value="finished payment(dummy)">
+        <input type="button" onclick="location.href='/home'"  value="cancel">
+    </body>
+</html>
