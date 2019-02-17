@@ -6,6 +6,8 @@ public_html/home.html
 public_html/payment.html
 public_html/purchase.html
 public_html/test.html
+public_html/img/img_copy.png
 sample2.js
+server_copy.js
 mongodb.js
 .DS_Store
