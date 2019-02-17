@@ -3,6 +3,13 @@
     <head>
         <title>購入</title>
         <meta charset="utf-8">
+        <script type="text/javascript">
+            function calc_purchase_amount(){
+                var unit_price = document.getElementsByName("unit_price");
+                var number = document.getElementsByName("num");
+                document.getElementById("purchase_amount").innerText = String(unit_price[0].value * number[0].value);
+            }
+        </script>
     </head>
     <body>
         <p><%= product_name %></p>
@@ -10,16 +17,15 @@
         <br>
         <p><%= product_name %>の説明</p>
         <form method="POST" action="/payment">
-            個数<input type="number" name="num"> <br>
-            価格<p></p>
+            個数<input type="number" name="num" min="1" step="1" max="5" placeholder="1" onchange="calc_purchase_amount()" /> <br>
+            <input type="hidden" name="unit_price" value="<%= unit_price %>">
+            価格<span id="purchase_amount"> </span><br>
             メールアドレス<input type="email" name="email_address"> <br>
             お届け先<input type="text" name="home_address"> <br>
             氏名<input type="text" name="name"> <br>
             <input type="submit" value="buy">
-            <input type="button" onclick="location.href='/payment'" value="buy(dummy)"> <br>
             <input type="button" onclick="location.href='/home'" value="cancel"> <br>
             <input type="hidden" name="product" value="<%= product_name %>">
-            <input type="hidden" name="unit_price", value="<%= unit_price %>">
         </form>
     </body>
 </html>
