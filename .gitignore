@@ -1,0 +1,11 @@
+node_modules/
+mongodb/
+public_html/bbs.ejs
+public_html/hello.ejs
+public_html/home.html
+public_html/payment.html
+public_html/purchase.html
+public_html/test.html
+sample2.js
+mongodb.js
+.DS_Store
