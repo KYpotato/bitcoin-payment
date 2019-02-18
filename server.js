@@ -3,6 +3,7 @@ var fs = require('fs');
 var ejs = require('ejs');
 var qs = require('querystring');
 var settings = require('./settings');
+var ObjectID = require('mongodb').ObjectID;
 var server = http.createServer();
 var template_home = fs.readFileSync(__dirname + '/public_html/home.ejs', 'utf-8');
 var template_purchase = fs.readFileSync(__dirname + '/public_html/purchase.ejs', 'utf-8');
@@ -10,7 +11,8 @@ var template_payment = fs.readFileSync(__dirname + '/public_html/payment.ejs', '
 var products = [];
 //var orders = [];
 var MongoClient = require('mongodb').MongoClient;
-var check_io;
+var check_io = new Object();
+var id_to_btc_address = new Object();
 
 const CHECK_TX_INTERVAL = 5000;
 const UNIT_SATOSHI = 100000000;
@@ -29,13 +31,11 @@ var NETWORK = {
     mainnet : 0,
     testnet : 1
 }
-const network = NETWORK.mainnet;
+const network = NETWORK.testnet;
 
-const check_tx = (btc_address, purchase_amount) => {
-    console.log("checking transaction:" + btc_address + " amount:" + purchase_amount);
+const check_tx = (id, purchase_amount) => {
+    console.log("checking transaction:" + id_to_btc_address[id] + " amount:" + purchase_amount);
     //check payment
-    //if finished payment then update db and clear interval and move page and inform it to owner
-    //if timeout then update db and clear interval and move page
 
     //watching payment
     const https = require('https');
@@ -50,11 +50,15 @@ const check_tx = (btc_address, purchase_amount) => {
                 target_network = "BTCTEST";
             }
             const ex_apireq_chain_so = https.request
-            ('https://chain.so/api/v2/get_address_balance/' + target_network + '/' + btc_address, (ex_apires) => {
+            ('https://chain.so/api/v2/get_address_balance/' + target_network + '/' + id_to_btc_address[id], (ex_apires) => {
                 ex_apires.on('data', (chunk) => {
                     //console.log(`BODY: ${chunk}`);
                     var json_blockchain = JSON.parse(Buffer.from(chunk).toString('utf-8'));
                     console.log(json_blockchain.data.address + ":" + json_blockchain.data.confirmed_balance + "btc");
+                    if(json_blockchain.data.confirmed_balance > purchase_amount){
+                        //clear check payment 
+                        paid_process(id);
+                    }
                 });
                 ex_apires.on('end', () => {
                     console.log('No more data in responce.');
@@ -92,7 +96,7 @@ const check_tx = (btc_address, purchase_amount) => {
                 target_network = "test3";
             }
             const ex_apireq_block_cypher = https.request
-            ('https://api.blockcypher.com/v1/btc/test3/addrs/' + btc_address + '/balance', (ex_apires) => {
+            ('https://api.blockcypher.com/v1/btc/test3/addrs/' + id_to_btc_address[id] + '/balance', (ex_apires) => {
                 ex_apires.on('data', (chunk) => {
                     //console.log(`BODY: ${chunk}`);
                     var json_blockchain = JSON.parse(Buffer.from(chunk).toString('utf-8'));
@@ -110,7 +114,38 @@ const check_tx = (btc_address, purchase_amount) => {
         default:
             break;
     }
+}
 
+function timeout_process(id){
+    //if timeout then update db and clear interval and move page
+}
+
+function paid_process(id){
+    console.log("clear id:" + id);
+    if(check_io != null && id.length > 0){
+        //clear checking payment
+        clearInterval(check_io[id]);
+        /* update db */
+        //connect to mongodb
+        MongoClient.connect("mongodb://" + settings.host, function(err, client){
+            if(err){ return console.dir(err); }
+            //use orderdb
+            const db = client.db(settings.orderdb);
+            db.collection("orders", function(err, collection){
+                if(err){ return console.dir(err); }
+                var filter = {_id: ObjectID(id)};
+                var update_data = {$set:{paid:true}};
+                collection.updateOne(filter, update_data, function(err, result){
+                    console.log("update db:" + result);
+                })
+            })
+        })
+        //clear array
+        delete id_to_btc_address[id];
+        delete check_io[id];
+        //move page
+        //inform it to owner
+    }
 }
 
 /* get products info from db */
@@ -242,10 +277,20 @@ server.on('request', function(req, res){
                                     ];
                                     collection.insert(doc, function(err, result){
                                         console.dir(result);
+                                        console.log(result["ops"][0]["_id"]);
+                                        var new_id = result["ops"][0]["_id"];
+                                        //start checking transaction
+                                        if(id_to_btc_address[new_id]){
+                                            console.log("duplication id")
+                                        }
+                                        id_to_btc_address[new_id] = json_invoice.btc_address;
+                                        console.log("id:" + new_id);
+                                        console.log("address:" + id_to_btc_address[new_id]);
+                                        check_io[new_id] = setInterval(
+                                            function(){check_tx(new_id, purchase_amount)}, 
+                                            CHECK_TX_INTERVAL);
                                     })
 
-                                    //start checking transaction
-                                    check_io = setInterval(function(){check_tx(json_invoice.btc_address, purchase_amount)}, CHECK_TX_INTERVAL);
                                 })
                             })
                         });
@@ -276,7 +321,12 @@ server.on('request', function(req, res){
 
             //stop checking transaction
             if(check_io != null){
-                clearInterval(check_io);
+                //clear check payment 
+                //paid_process(Object.keys(id_to_btc_address).filter((key) => {
+                //    return id_to_btc_address[key] === "n14trMejKPL8HMBj2EhQkctsDfhMXHMtkJ"}));
+                var target_id = Object.keys(id_to_btc_address).filter((key) => {
+                        return id_to_btc_address[key] === "n14trMejKPL8HMBj2EhQkctsDfhMXHMtkJ"})
+                paid_process(target_id);
             }
             break;
 
