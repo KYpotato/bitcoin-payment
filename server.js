@@ -13,6 +13,8 @@ var products = [];
 var MongoClient = require('mongodb').MongoClient;
 var check_io = new Object();
 var id_to_btc_address = new Object();
+var paid_id = new Object();
+var timeout_id = new Object();
 
 const CHECK_TX_INTERVAL = 5000;
 const UNIT_SATOSHI = 100000000;
@@ -52,10 +54,13 @@ const check_tx = (id, purchase_amount) => {
             const ex_apireq_chain_so = https.request
             ('https://chain.so/api/v2/get_address_balance/' + target_network + '/' + id_to_btc_address[id], (ex_apires) => {
                 ex_apires.on('data', (chunk) => {
-                    //console.log(`BODY: ${chunk}`);
+                    console.log(`BODY: ${chunk}`);
                     var json_blockchain = JSON.parse(Buffer.from(chunk).toString('utf-8'));
+                    console.log(Number(json_blockchain.data.confirmed_balance));
+                    console.log(purchase_amount);
                     console.log(json_blockchain.data.address + ":" + json_blockchain.data.confirmed_balance + "btc");
-                    if(json_blockchain.data.confirmed_balance > purchase_amount){
+                    if(Number(json_blockchain.data.confirmed_balance) >= purchase_amount){
+                        console.log('call paid_process');
                         //clear check payment 
                         paid_process(id);
                     }
@@ -89,7 +94,7 @@ const check_tx = (id, purchase_amount) => {
             break;
         case API.block_cypher:
             //blockcypher.com
-            if(network == NETWORK.mainnet){
+            /*if(network == NETWORK.mainnet){
                 target_network = "main";
             }
             else{
@@ -109,7 +114,7 @@ const check_tx = (id, purchase_amount) => {
             ex_apireq_block_cypher.on('error', (e) => {
                 console.error(`problem with request: ${e.message}`);
             });
-            ex_apireq_block_cypher.end();
+            ex_apireq_block_cypher.end();*/
             break;
         default:
             break;
@@ -117,12 +122,37 @@ const check_tx = (id, purchase_amount) => {
 }
 
 function timeout_process(id){
-    //if timeout then update db and clear interval and move page
+    console.log("timeout_process:" + id);
+    /* update db */
+    //connect to mongodb
+    MongoClient.connect("mongodb://" + settings.host, function(err, client){
+        if(err){ return console.dir(err); }
+        //use orderdb
+        const db = client.db(settings.orderdb);
+        db.collection("orders", function(err, collection){
+            if(err){ return console.dir(err); }
+            //update
+            var filter = {_id: ObjectID(id.toString())};               
+            var update_data = {$set:{timeout:true}};
+            collection.updateOne(filter, update_data, function(err, result){
+                console.log("update db:" + result);
+            })
+        })
+    })
+    //clear array
+    delete id_to_btc_address[id];
+    delete check_io[id];
+    //register timeout
+    timeout_id[id] = true;
 }
 
 function paid_process(id){
-    console.log("clear id:" + id);
-    if(check_io != null && id.length > 0){
+    console.log("paid_process:" + id);
+    console.log(check_io[id]);
+    console.log(id.length);
+    console.log(typeof id);
+    if(check_io[id] != null && id.length > 0){
+        console.log('clear interval')
         //clear checking payment
         clearInterval(check_io[id]);
         /* update db */
@@ -133,7 +163,8 @@ function paid_process(id){
             const db = client.db(settings.orderdb);
             db.collection("orders", function(err, collection){
                 if(err){ return console.dir(err); }
-                var filter = {_id: ObjectID(id)};
+                //update
+                var filter = {_id: ObjectID(id.toString())};               
                 var update_data = {$set:{paid:true}};
                 collection.updateOne(filter, update_data, function(err, result){
                     console.log("update db:" + result);
@@ -143,8 +174,24 @@ function paid_process(id){
         //clear array
         delete id_to_btc_address[id];
         delete check_io[id];
-        //move page
         //inform it to owner
+
+        //register paid id
+        paid_id[id] = true;
+    }
+}
+
+function del_termination_null(target_srt){
+    //console.log(target_srt);
+    if(target_srt.length > 4){
+        //console.log(target_srt.slice(-4));
+        if(target_srt.slice(-4) == "null"){
+            //console.log(target_srt.slice(0, -4));
+            return target_srt.slice(0, -4);
+        }
+        else{
+            return target_srt;
+        }
     }
 }
 
@@ -230,17 +277,9 @@ server.on('request', function(req, res){
                     var json_invoice;
                     const apireq = http.request("http://localhost:3000/api/v1/invoice?amount=" + purchase_amount, (apires => {
                         apires.on('data', (chunk) => {
-                            //console.log(`${chunk}`);
-                            //console.log(Buffer.from(chunk).toString('utf-8'));
+                            //parse invoice
                             json_invoice = JSON.parse(Buffer.from(chunk).toString('utf-8'));
                             console.log(json_invoice.invoice);
-                            //make payment page
-                            var data = ejs.render(template_payment, {
-                                invoice: json_invoice.invoice
-                            })
-                            res.writeHead(200, {'Content-Type':'text/html'});
-                            res.write(data);
-                            res.end();
 
                             /* regster order to db */
                             //connect to mongodb
@@ -260,6 +299,7 @@ server.on('request', function(req, res){
                                     name            :customer name
                                     cancel          :flag if canceled
                                     paid            :flag if paid
+                                    timeout         :flag if timeout
                                     purchase_amount :purchase amount(btc)
                                     payment_amount  :payment amount(btc)
                                     */
@@ -272,13 +312,13 @@ server.on('request', function(req, res){
                                         name: query.name, 
                                         cancel: false, 
                                         paid: false, 
+                                        timeout: false,
                                         purchase_amount: purchase_amount, 
                                         payment_amount: 0}
                                     ];
                                     collection.insert(doc, function(err, result){
                                         console.dir(result);
-                                        console.log(result["ops"][0]["_id"]);
-                                        var new_id = result["ops"][0]["_id"];
+                                        var new_id = del_termination_null(String(result["ops"][0]["_id"]));
                                         //start checking transaction
                                         if(id_to_btc_address[new_id]){
                                             console.log("duplication id")
@@ -289,6 +329,17 @@ server.on('request', function(req, res){
                                         check_io[new_id] = setInterval(
                                             function(){check_tx(new_id, purchase_amount)}, 
                                             CHECK_TX_INTERVAL);
+                                        console.log(id_to_btc_address[new_id]);
+                                        console.log(check_io[new_id]);
+
+                                        //make payment page
+                                        var data = ejs.render(template_payment, {
+                                            invoice: json_invoice.invoice,
+                                            id:new_id
+                                        })
+                                        res.writeHead(200, {'Content-Type':'text/html'});
+                                        res.write(data);
+                                        res.end();
                                     })
 
                                 })
@@ -306,6 +357,44 @@ server.on('request', function(req, res){
             }
             break;
 
+        case '/check_payment':
+            console.log('----check_payment-----');
+            if(req.method === "POST"){
+                req.data = "";
+                req.on("readable", function(){
+                    req.data += req.read();
+                });
+                req.on("end", function(){
+                    //parse id
+                    var ret_target_id = del_termination_null(qs.parse(req.data).id);
+                    console.log(paid_id[ret_target_id]);
+                    console.log(timeout_id[ret_target_id]);
+                    console.log(id_to_btc_address[ret_target_id]);
+                    if(paid_id[ret_target_id]){
+                        //paid 
+                        console.log('send paid info to client');
+                        res.write('paid');
+                        res.end ();
+                        delete paid_id[ret_target_id];
+                        if(timeout_id[ret_target_id]){ delete timeout_id[ret_target_id]; }
+                    }
+                    else if(timeout_id[ret_target_id]){
+                        //timeout
+                        console.log('return timeout to client');
+                        res.write('timeout');
+                        res.end ();
+                        delete timeout_id[ret_target_id];
+                    }
+                    else{
+                        //not paid yet
+                        console.log("return 'not yet' to client");
+                        res.write('not yet');
+                        res.end ();
+                    }
+                });
+            }
+            break;
+
         case '/fin_payment':
             fs.readFile(__dirname + '/public_html' + req.url + '.html', 'utf-8', function(err, data){
                 if(err){
@@ -318,16 +407,6 @@ server.on('request', function(req, res){
                 res.write(data);
                 res.end();
             })
-
-            //stop checking transaction
-            if(check_io != null){
-                //clear check payment 
-                //paid_process(Object.keys(id_to_btc_address).filter((key) => {
-                //    return id_to_btc_address[key] === "n14trMejKPL8HMBj2EhQkctsDfhMXHMtkJ"}));
-                var target_id = Object.keys(id_to_btc_address).filter((key) => {
-                        return id_to_btc_address[key] === "n14trMejKPL8HMBj2EhQkctsDfhMXHMtkJ"})
-                paid_process(target_id);
-            }
             break;
 
         default:

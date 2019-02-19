@@ -3,6 +3,7 @@
     <head>
         <title>支払い</title>
         <meta charset="utf-8">
+        <script type="text/javascript" src="//ajax.googleapis.com/ajax/libs/jquery/2.1.0/jquery.min.js"></script>
         <!-- <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.5.2/jquery.min.js"></script>
         <script src="../external/jquery.qrcode.min.js"></script>
         <script type="text/JavaScript">
@@ -13,12 +14,42 @@
         </script> -->
         
     </head>
-    <body>
+    <body onload="pollingfunc()">
         <!-- <div id="qrcode"></div> -->
         <img src="https://chart.googleapis.com/chart?cht=qr&chs=200x200&chco=000000&chl=<%= invoice %>"/>
         <p><%= invoice %></p>
         <p>invoice有効期限カウントダウン</p>
-        <input type="button" onclick="location.href='/fin_payment'"  value="finished payment(dummy)">
+        <input type="button" onclick="alert('paid!');location.href='/fin_payment'"  value="finished payment(dummy)">
         <input type="button" onclick="location.href='/home'"  value="cancel">
+        <input type="hidden" name="id" value="<%= id %>">
+        <script type="text/javascript">
+            function pollingfunc(){
+                console.log('pollingfunc');
+                setTimeout(function(){
+                    console.log('function:' + document.getElementsByName('id')[0].value);
+                    $.ajax({
+                        url:'/check_payment',
+                        type: 'POST',
+                        data: {id: document.getElementsByName('id')[0].value},
+                        success: function(res){
+                            console.log('return from server:' + res);
+                            if(res == 'paid'){
+                                //move to next page
+                                window.location.href = '/fin_payment';
+                            }
+                            else if(res == 'timeout'){
+                                //move to timeout page
+                                window.location.href = '/timeout';
+                            }
+                            else{
+                                //return 'not yet'
+                                console.log('polling');
+                                pollingfunc();
+                            }
+                        }
+                    })
+                }, 5000);
+            }
+        </script>
     </body>
 </html>
