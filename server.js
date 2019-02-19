@@ -11,12 +11,14 @@ var template_payment = fs.readFileSync(__dirname + '/public_html/payment.ejs', '
 var products = [];
 //var orders = [];
 var MongoClient = require('mongodb').MongoClient;
-var check_io = new Object();
+var interval_obj = new Object();
+var timeout_obj = new Object();
 var id_to_btc_address = new Object();
 var paid_id = new Object();
 var timeout_id = new Object();
 
-const CHECK_TX_INTERVAL = 5000;
+const CHECK_TX_INTERVAL = 5 * 1000;
+const CHECK_TX_TIMEOUT = 60 * 1000;
 const UNIT_SATOSHI = 100000000;
 
 console.log(settings);
@@ -62,7 +64,7 @@ const check_tx = (id, purchase_amount) => {
                     if(Number(json_blockchain.data.confirmed_balance) >= purchase_amount){
                         console.log('call paid_process');
                         //clear check payment 
-                        paid_process(id);
+                        paid_process(id, json_blockchain.data.confirmed_balance);
                     }
                 });
                 ex_apires.on('end', () => {
@@ -121,7 +123,7 @@ const check_tx = (id, purchase_amount) => {
     }
 }
 
-function timeout_process(id){
+const timeout_process = (id) => {
     console.log("timeout_process:" + id);
     /* update db */
     //connect to mongodb
@@ -139,22 +141,25 @@ function timeout_process(id){
             })
         })
     })
+    //clear interval
+    clearInterval(interval_obj[id]);
     //clear array
     delete id_to_btc_address[id];
-    delete check_io[id];
+    delete interval_obj[id];
+    delete timeout_obj[id];
     //register timeout
     timeout_id[id] = true;
 }
 
-function paid_process(id){
+function paid_process(id, payment_amount){
     console.log("paid_process:" + id);
-    console.log(check_io[id]);
+    console.log(interval_obj[id]);
     console.log(id.length);
     console.log(typeof id);
-    if(check_io[id] != null && id.length > 0){
+    if(interval_obj[id] != null && id.length > 0){
         console.log('clear interval')
         //clear checking payment
-        clearInterval(check_io[id]);
+        clearInterval(interval_obj[id]);
         /* update db */
         //connect to mongodb
         MongoClient.connect("mongodb://" + settings.host, function(err, client){
@@ -165,19 +170,22 @@ function paid_process(id){
                 if(err){ return console.dir(err); }
                 //update
                 var filter = {_id: ObjectID(id.toString())};               
-                var update_data = {$set:{paid:true}};
+                var update_data = {$set:{paid:true,payment_amount:payment_amount}};
                 collection.updateOne(filter, update_data, function(err, result){
                     console.log("update db:" + result);
                 })
             })
         })
+        //clear timeout 
+        clearTimeout(timeout_obj[id]);
         //clear array
         delete id_to_btc_address[id];
-        delete check_io[id];
-        //inform it to owner
-
+        delete interval_obj[id];
+        delete timeout_obj[id];
         //register paid id
         paid_id[id] = true;
+        //inform it to owner
+
     }
 }
 
@@ -326,11 +334,14 @@ server.on('request', function(req, res){
                                         id_to_btc_address[new_id] = json_invoice.btc_address;
                                         console.log("id:" + new_id);
                                         console.log("address:" + id_to_btc_address[new_id]);
-                                        check_io[new_id] = setInterval(
+                                        interval_obj[new_id] = setInterval(
                                             function(){check_tx(new_id, purchase_amount)}, 
                                             CHECK_TX_INTERVAL);
+                                        timeout_obj[new_id] = setTimeout(
+                                            function(){timeout_process(new_id)},
+                                            CHECK_TX_TIMEOUT);
                                         console.log(id_to_btc_address[new_id]);
-                                        console.log(check_io[new_id]);
+                                        console.log(interval_obj[new_id]);
 
                                         //make payment page
                                         var data = ejs.render(template_payment, {
@@ -393,6 +404,20 @@ server.on('request', function(req, res){
                     }
                 });
             }
+            break;
+
+        case '/timeout':
+            fs.readFile(__dirname + '/public_html' + req.url + '.html', 'utf-8', function(err, data){
+                if(err){
+                    res.writeHead(404, {'Content-Type':'text/plain'});
+                    res.write('not found');
+                    res.end();
+                    return;
+                }
+                res.writeHead(200, {'Content-Type':'text/html'});
+                res.write(data);
+                res.end();
+            })
             break;
 
         case '/fin_payment':
