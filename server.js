@@ -4,6 +4,7 @@ var ejs = require('ejs');
 var qs = require('querystring');
 var settings = require('./settings');
 var ObjectID = require('mongodb').ObjectID;
+var request_slack = require('request');
 var server = http.createServer();
 var template_home = fs.readFileSync(__dirname + '/public_html/home.ejs', 'utf-8');
 var template_purchase = fs.readFileSync(__dirname + '/public_html/purchase.ejs', 'utf-8');
@@ -194,18 +195,48 @@ function paid_process(id, payment_amount){
         /* update db */
         //connect to mongodb
         MongoClient.connect("mongodb://" + settings.host, function(err, client){
-            if(err){ return console.dir(err); }
-            //use orderdb
-            const db = client.db(settings.orderdb);
-            db.collection("orders", function(err, collection){
-                if(err){ return console.dir(err); }
-                //update
-                var filter = {_id: ObjectID(id.toString())};               
-                var update_data = {$set:{paid:true,payment_amount:payment_amount}};
-                collection.updateOne(filter, update_data, function(err, result){
-                    console.log("update db:" + result);
+            if(!err){
+                //use orderdb
+                const db = client.db(settings.orderdb);
+                db.collection("orders", function(err, collection){
+                    if(!err){
+                        //update
+                        var filter = {_id: ObjectID(id.toString())};               
+                        var update_data = {$set:{paid:true,payment_amount:payment_amount}};
+                        collection.updateOne(filter, update_data, function(err, result){
+                            console.log("update db:" + result);
+                        })
+                        //find
+                        collection.find(filter).toArray((err, documents) => {
+                            if(!err){
+                                //inform it to owner
+                                var options = {
+                                    url: 'https://hooks.slack.com/services/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',
+                                    headers: {"Content-type": "application/json",},
+                                    json: {"text": del_termination_null(documents[0].product) + " is sold"}
+                                };
+                                request_slack.post(options, function(err, resuponse, body){
+                                    if(!err && resuponse.statusCode == 200){
+                                        console.log(body.name);
+                                    }
+                                    else{
+                                        console.log('error:' + resuponse.statusCode + body);
+                                    }
+                                })
+                            }
+                            else{
+                                console.dir(err);
+                            }
+                        })
+                    }
+                    else{
+                        console.dir(err); 
+                    }
                 })
-            })
+            }
+            else{
+                console.dir(err); 
+            }
         })
         //clear array
         delete id_to_btc_address[id];
@@ -213,8 +244,6 @@ function paid_process(id, payment_amount){
         delete timeout_obj[id];
         //register paid id
         paid_id[id] = true;
-        //inform it to owner
-
     }
 }
 
