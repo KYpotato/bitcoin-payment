@@ -12,23 +12,46 @@
             jQuery("#qrcode").qrcode("<%= invoice %>");
         });
         </script> -->
+        <script type="text/javascript">
+        window.addEventListener('load', function(){
+            console.log('loaded');
+            const interval_ms = 1000;
+            var time_limit = document.getElementById('time_limit').value;
+            var countdown = function(){
+                time_limit -= interval_ms;
+                if(0 < time_limit){
+                    document.getElementById('countdown').innerHTML = 
+                        "請求書の有効期限 : " +
+                        Math.floor(time_limit / 1000/ 60) + "分" +
+                        Math.floor(time_limit / 1000) + "秒";
+                    setTimeout(countdown, interval_ms);
+                }
+                else{
+                    document.getElementById('countdown').innerHTML = "";
+                }
+            }
+            countdown();
+        })
+        </script>
         
     </head>
     <body onload="pollingfunc()">
         <!-- <div id="qrcode"></div> -->
         <img src="https://chart.googleapis.com/chart?cht=qr&chs=200x200&chco=000000&chl=<%= invoice %>"/>
         <p><%= invoice %></p>
-        <p>invoice有効期限カウントダウン</p>
-        <input type="button" onclick="alert('paid!');location.href='/fin_payment'"  value="finished payment(dummy)">
-        <input type="button" onclick="location.href='/home'"  value="cancel">
-        <input type="hidden" name="id" value="<%= id %>">
+        <p id="countdown">invoice有効期限カウントダウン</p>
+        <input type="hidden" id="time_limit" value="<%= time_limit %>">
+        <form method="POST" action="/home">
+            <input type="submit" name="action" value="cancel" onclick="location.href='/home'">
+            <input type="hidden" name="id" id="id" value="<%= id %>">
+        </form>
         <script type="text/javascript">
             function pollingfunc(){
                 setTimeout(function(){
                     $.ajax({
                         url:'/check_payment',
                         type: 'POST',
-                        data: {id: document.getElementsByName('id')[0].value},
+                        data: {id: document.getElementById('id').value},
                         success: function(res){
                             if(res == 'paid'){
                                 //move to next page

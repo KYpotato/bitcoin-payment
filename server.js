@@ -9,7 +9,6 @@ var template_home = fs.readFileSync(__dirname + '/public_html/home.ejs', 'utf-8'
 var template_purchase = fs.readFileSync(__dirname + '/public_html/purchase.ejs', 'utf-8');
 var template_payment = fs.readFileSync(__dirname + '/public_html/payment.ejs', 'utf-8');
 var products = [];
-//var orders = [];
 var MongoClient = require('mongodb').MongoClient;
 var interval_obj = new Object();
 var timeout_obj = new Object();
@@ -18,7 +17,7 @@ var paid_id = new Object();
 var timeout_id = new Object();
 
 const CHECK_TX_INTERVAL = 5 * 1000;
-const CHECK_TX_TIMEOUT = 60 * 1000;
+const CHECK_TX_TIMEOUT = 10 * 1000;
 const UNIT_SATOSHI = 100000000;
 
 console.log(settings);
@@ -123,8 +122,37 @@ const check_tx = (id, purchase_amount) => {
     }
 }
 
+function cancel_process(id){
+    console.log("cancel_process:" + id);
+    //clear interval and timeout
+    clearInterval(interval_obj[id]);
+    clearTimeout(timeout_obj[id]);
+    /* update db */
+    //connect to mongodb
+    MongoClient.connect("mongodb://" + settings.host, function(err, client){
+        if(err){ return console.dir(err); }
+        //use orderdb
+        const db = client.db(settings.orderdb);
+        db.collection("orders", function(err, collection){
+            if(err){ return console.dir(err); }
+            //update
+            var filter = {_id: ObjectID(id.toString())};               
+            var update_data = {$set:{cancel:true}};
+            collection.updateOne(filter, update_data, function(err, result){
+                console.log("update db:" + result);
+            })
+        })
+    })
+    //clear array
+    delete id_to_btc_address[id];
+    delete interval_obj[id];
+    delete timeout_obj[id];
+}
+
 const timeout_process = (id) => {
     console.log("timeout_process:" + id);
+    //clear interval
+    clearInterval(interval_obj[id]);
     /* update db */
     //connect to mongodb
     MongoClient.connect("mongodb://" + settings.host, function(err, client){
@@ -141,8 +169,6 @@ const timeout_process = (id) => {
             })
         })
     })
-    //clear interval
-    clearInterval(interval_obj[id]);
     //clear array
     delete id_to_btc_address[id];
     delete interval_obj[id];
@@ -153,13 +179,11 @@ const timeout_process = (id) => {
 
 function paid_process(id, payment_amount){
     console.log("paid_process:" + id);
-    console.log(interval_obj[id]);
-    console.log(id.length);
-    console.log(typeof id);
     if(interval_obj[id] != null && id.length > 0){
         console.log('clear interval')
-        //clear checking payment
+        //clear checking payment and timeout
         clearInterval(interval_obj[id]);
+        clearTimeout(timeout_obj[id]);
         /* update db */
         //connect to mongodb
         MongoClient.connect("mongodb://" + settings.host, function(err, client){
@@ -176,8 +200,6 @@ function paid_process(id, payment_amount){
                 })
             })
         })
-        //clear timeout 
-        clearTimeout(timeout_obj[id]);
         //clear array
         delete id_to_btc_address[id];
         delete interval_obj[id];
@@ -232,13 +254,26 @@ MongoClient.connect("mongodb://" + settings.host, function(err, client){
 server.on('request', function(req, res){
     switch(req.url){
         case '/home':
+            console.log('----'+ req.url + '-----');
+            if(req.method === "POST"){
+                console.log('cancel');
+                req.data = "";
+                req.on("readable", function(){
+                    //parse submited data
+                    req.data += req.read();
+                });
+                req.on("end", function(){
+                    var query = qs.parse(req.data);
+                    cancel_process(del_termination_null(query.id));
+                });
+            }
             var data = ejs.render(template_home, {
                 product_name_1: products[0].name,
                 product_image_1: products[0].image,
                 unit_price_1: products[0].unit_price_s / UNIT_SATOSHI,
                 product_name_2: products[1].name,
                 product_image_2: products[1].image,
-                unit_price_2: products[1].unit_price_s /UNIT_SATOSHI,
+                unit_price_2: products[1].unit_price_s / UNIT_SATOSHI,
             })
             res.writeHead(200, {'Content-Type':'text/html'});
             res.write(data);
@@ -247,6 +282,7 @@ server.on('request', function(req, res){
             
         case '/purchase1':
         case '/purchase2':
+            console.log('----'+ req.url + '-----');
             var product_id;
             if(req.url == '/purchase1'){
                 product_id = 0;
@@ -271,6 +307,7 @@ server.on('request', function(req, res){
             break;
 
         case '/payment':
+            console.log('----'+ req.url + '-----');
             //receive post(buy)
             if(req.method === "POST"){
                 req.data = "";
@@ -346,7 +383,8 @@ server.on('request', function(req, res){
                                         //make payment page
                                         var data = ejs.render(template_payment, {
                                             invoice: json_invoice.invoice,
-                                            id:new_id
+                                            id:new_id,
+                                            time_limit: CHECK_TX_TIMEOUT
                                         })
                                         res.writeHead(200, {'Content-Type':'text/html'});
                                         res.write(data);
@@ -369,7 +407,7 @@ server.on('request', function(req, res){
             break;
 
         case '/check_payment':
-            console.log('----check_payment-----');
+            console.log('----'+ req.url + '-----');
             if(req.method === "POST"){
                 req.data = "";
                 req.on("readable", function(){
@@ -407,20 +445,9 @@ server.on('request', function(req, res){
             break;
 
         case '/timeout':
-            fs.readFile(__dirname + '/public_html' + req.url + '.html', 'utf-8', function(err, data){
-                if(err){
-                    res.writeHead(404, {'Content-Type':'text/plain'});
-                    res.write('not found');
-                    res.end();
-                    return;
-                }
-                res.writeHead(200, {'Content-Type':'text/html'});
-                res.write(data);
-                res.end();
-            })
-            break;
-
         case '/fin_payment':
+        default:
+            console.log('----'+ req.url + '-----');
             fs.readFile(__dirname + '/public_html' + req.url + '.html', 'utf-8', function(err, data){
                 if(err){
                     res.writeHead(404, {'Content-Type':'text/plain'});
@@ -432,13 +459,6 @@ server.on('request', function(req, res){
                 res.write(data);
                 res.end();
             })
-            break;
-
-        default:
-            //not found page
-            res.writeHead(404, {'Content-Type':'text/plain'});
-            res.write('not found');
-            res.end();
             break;
     }
 })
