@@ -59,14 +59,17 @@ const check_tx = (id, purchase_amount) => {
                     //console.log("balance json:" + chunk);
                     try{
                         var json_blockchain = JSON.parse(Buffer.from(chunk).toString('utf-8'));
-                        console.log("confirmed_balance:" + json_blockchain.data.confirmed_balance);
-                        console.log("unconfirmed_balance" + json_blockchain.data.unconfirmed_balance);
-                        console.log("purcase_amount" + purchase_amount);
-                        console.log(json_blockchain.data.address + ":" + json_blockchain.data.confirmed_balance + "btc");
-                        if(Number(json_blockchain.data.confirmed_balance) >= purchase_amount){
+                        var confirmed_balance = Number(json_blockchain.data.confirmed_balance);
+                        var unconfirmed_balance = Number(json_blockchain.data.unconfirmed_balance);
+                        console.log("confirmed_balance:" + confirmed_balance);
+                        console.log("unconfirmed_balance:" + unconfirmed_balance);
+                        console.log("purcase_amount:" + purchase_amount);
+                        console.log("address:" + json_blockchain.data.address);
+                        var sum_balance = confirmed_balance + Number(unconfirmed_balance);
+                        if(sum_balance >= purchase_amount){
                             console.log('call paid_process');
                             //clear check payment 
-                            paid_process(id, json_blockchain.data.confirmed_balance);
+                            paid_process(id, confirmed_balance, unconfirmed_balance);
                         }
                     } 
                     catch (e){
@@ -185,7 +188,7 @@ const timeout_process = (id) => {
     timeout_id[id] = true;
 }
 
-function paid_process(id, payment_amount){
+function paid_process(id, confirmed_balance, unconfirmed_balance){
     console.log("paid_process:" + id);
     if(interval_obj[id] != null && id.length > 0){
         console.log('clear interval')
@@ -202,7 +205,11 @@ function paid_process(id, payment_amount){
                     if(!err){
                         //update
                         var filter = {_id: ObjectID(id.toString())};               
-                        var update_data = {$set:{paid:true,payment_amount:payment_amount}};
+                        var update_data = {
+                            $set:{
+                                paid: true,
+                                confirmed_balance: confirmed_balance,
+                                unconfirmed_balance: unconfirmed_balance}};
                         collection.updateOne(filter, update_data, function(err, result){
                             console.log("update db:" + result);
                         })
@@ -213,7 +220,7 @@ function paid_process(id, payment_amount){
                                 var options = {
                                     url: 'https://hooks.slack.com/services/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',
                                     headers: {"Content-type": "application/json",},
-                                    json: {"text": del_termination_null(documents[0].product) + " is sold"}
+                                    json: {"text": documents[0].num + " of " + del_termination_null(documents[0].product) + " is sold"}
                                 };
                                 request_slack.post(options, function(err, resuponse, body){
                                     if(!err && resuponse.statusCode == 200){
@@ -382,7 +389,8 @@ server.on('request', function(req, res){
                                     paid            :flag if paid
                                     timeout         :flag if timeout
                                     purchase_amount :purchase amount(btc)
-                                    payment_amount  :payment amount(btc)
+                                    confirmed_balance   :confirmed balance(btc) when paid
+                                    unconfirmed_balance :unconfirmed balance(btc) when paid
                                     */
                                     var doc = [{
                                         product: query.product, 
@@ -395,7 +403,8 @@ server.on('request', function(req, res){
                                         paid: false, 
                                         timeout: false,
                                         purchase_amount: purchase_amount, 
-                                        payment_amount: 0}
+                                        confirmed_balance: 0,
+                                        unconfirmed_balance: 0}
                                     ];
                                     collection.insert(doc, function(err, result){
                                         console.dir(result);
