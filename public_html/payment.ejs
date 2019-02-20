@@ -23,7 +23,7 @@
                     document.getElementById('countdown').innerHTML = 
                         "請求書の有効期限 : " +
                         Math.floor(time_limit / 1000/ 60) + "分" +
-                        Math.floor(time_limit / 1000) + "秒";
+                        Math.floor(time_limit / 1000 % 60) + "秒";
                     setTimeout(countdown, interval_ms);
                 }
                 else{
