@@ -17,7 +17,7 @@ var paid_id = new Object();
 var timeout_id = new Object();
 
 const CHECK_TX_INTERVAL = 5 * 1000;
-const CHECK_TX_TIMEOUT = 10 * 1000;
+const CHECK_TX_TIMEOUT = 600 * 1000;
 const UNIT_SATOSHI = 100000000;
 
 console.log(settings);
@@ -55,15 +55,22 @@ const check_tx = (id, purchase_amount) => {
             const ex_apireq_chain_so = https.request
             ('https://chain.so/api/v2/get_address_balance/' + target_network + '/' + id_to_btc_address[id], (ex_apires) => {
                 ex_apires.on('data', (chunk) => {
-                    console.log(`BODY: ${chunk}`);
-                    var json_blockchain = JSON.parse(Buffer.from(chunk).toString('utf-8'));
-                    console.log(Number(json_blockchain.data.confirmed_balance));
-                    console.log(purchase_amount);
-                    console.log(json_blockchain.data.address + ":" + json_blockchain.data.confirmed_balance + "btc");
-                    if(Number(json_blockchain.data.confirmed_balance) >= purchase_amount){
-                        console.log('call paid_process');
-                        //clear check payment 
-                        paid_process(id, json_blockchain.data.confirmed_balance);
+                    //console.log("balance json:" + chunk);
+                    try{
+                        var json_blockchain = JSON.parse(Buffer.from(chunk).toString('utf-8'));
+                        console.log("confirmed_balance:" + json_blockchain.data.confirmed_balance);
+                        console.log("unconfirmed_balance" + json_blockchain.data.unconfirmed_balance);
+                        console.log("purcase_amount" + purchase_amount);
+                        console.log(json_blockchain.data.address + ":" + json_blockchain.data.confirmed_balance + "btc");
+                        if(Number(json_blockchain.data.confirmed_balance) >= purchase_amount){
+                            console.log('call paid_process');
+                            //clear check payment 
+                            paid_process(id, json_blockchain.data.confirmed_balance);
+                        }
+                    } 
+                    catch (e){
+                        console.log("except at get json(balance):" + e);
+                        console.log("json:" + chunk);
                     }
                 });
                 ex_apires.on('end', () => {
