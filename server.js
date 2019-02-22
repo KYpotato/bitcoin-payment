@@ -508,4 +508,4 @@ server.on('request', function(req, res){
     }
 })
 server.listen(settings.port, settings.host);
-console.log("server listening...");
+console.log("server listening " + settings.port);
