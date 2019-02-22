@@ -508,4 +508,9 @@ server.on('request', function(req, res){
             break;
     }
 })
+<<<<<<< HEAD
 server.listen(settings.port, () => console.log('Listening on port ' + settings.port));
+=======
+server.listen(settings.port, settings.host);
+console.log("server listening " + settings.port);
+>>>>>>> change port number
