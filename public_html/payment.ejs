@@ -42,7 +42,7 @@
         <p id="countdown">invoice有効期限カウントダウン</p>
         <input type="hidden" id="time_limit" value="<%= time_limit %>">
         <form method="POST" action="/home">
-            <input type="submit" name="action" value="cancel" onclick="location.href='/home'">
+            <input type="submit" value="cancel">
             <input type="hidden" name="id" id="id" value="<%= id %>">
         </form>
         <script type="text/javascript">
