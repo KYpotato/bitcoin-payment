@@ -281,6 +281,7 @@ MongoClient.connect(settings.mongodb_products_uri, function(err, client){
         image           :image path of product
          */
         collection.find().toArray(function(err, items){
+            console.log(items);
             for(var i = 0; i < items.length; i++){
                 products.push(items[i]);
             }
