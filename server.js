@@ -297,6 +297,7 @@ MongoClient.connect(settings.mongodb_products_uri, function(err, client){
 
 server.on('request', function(req, res){
     switch(req.url){
+        case '/':
         case '/home':
             console.log('----'+ req.url + '-----');
             if(req.method === "POST"){
@@ -305,8 +306,10 @@ server.on('request', function(req, res){
                 req.on("readable", function(){
                     //parse submited data
                     req.data += req.read();
+                    console.log("readable");
                 });
                 req.on("end", function(){
+                    console.log('end');
                     var query = qs.parse(req.data);
                     cancel_process(del_termination_null(query.id));
                 });
