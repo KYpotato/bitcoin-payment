@@ -218,7 +218,7 @@ function paid_process(id, confirmed_balance, unconfirmed_balance){
                             if(!err){
                                 //inform it to owner
                                 var options = {
-                                    url: 'https://hooks.slack.com/services/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',
+                                    url: settings.slack_address,
                                     headers: {"Content-type": "application/json",},
                                     json: {"text": documents[0].num + " of " + del_termination_null(documents[0].product) + " is sold"}
                                 };
@@ -363,7 +363,7 @@ server.on('request', function(req, res){
                     var purchase_amount = query.num * Number(query.unit_price);
                     /* get invoice from web api */
                     var json_invoice;
-                    const apireq = http.request("http://localhost:3000/api/v1/invoice?amount=" + purchase_amount, (apires => {
+                    const apireq = http.request(settings.invoice_url + purchase_amount, (apires => {
                         apires.on('data', (chunk) => {
                             //parse invoice
                             json_invoice = JSON.parse(Buffer.from(chunk).toString('utf-8'));
@@ -507,5 +507,4 @@ server.on('request', function(req, res){
             break;
     }
 })
-server.listen(settings.port, settings.host);
-console.log("server listening...");
+server.listen(settings.port, () => console.log('Listening on port ' + settings.port));
