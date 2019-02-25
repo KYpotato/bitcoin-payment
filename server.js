@@ -365,7 +365,7 @@ server.on('request', function(req, res){
                     var purchase_amount = query.num * Number(query.unit_price);
                     /* get invoice from web api */
                     var json_invoice;
-                    const apireq = http.request(settings.invoice_url + purchase_amount, (apires => {
+                    const apireq = https.request(settings.invoice_url + purchase_amount, (apires => {
                         apires.on('data', (chunk) => {
                             //parse invoice
                             json_invoice = JSON.parse(Buffer.from(chunk).toString('utf-8'));
@@ -509,9 +509,4 @@ server.on('request', function(req, res){
             break;
     }
 })
-<<<<<<< HEAD
 server.listen(settings.port, () => console.log('Listening on port ' + settings.port));
-=======
-server.listen(settings.port, settings.host);
-console.log("server listening " + settings.port);
->>>>>>> change port number
