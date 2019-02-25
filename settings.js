@@ -10,3 +10,6 @@ exports.orderdb = 'heroku_7bkqz5mr';
 //exports.mongodb_orders_uri = "mongodb://" + this.host;
 exports.mongodb_orders_uri = process.env.MONGOLAB_GRAY_URI;
 exports.productdb = "heroku_s303mcbb";
+
+exports.check_tx_interval = 5 * 1000;
+exports.check_tx_timeout = 10 * 1000;

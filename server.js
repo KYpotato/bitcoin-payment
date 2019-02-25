@@ -18,8 +18,8 @@ var id_to_btc_address = new Object();
 var paid_id = new Object();
 var timeout_id = new Object();
 
-const CHECK_TX_INTERVAL = 5 * 1000;
-const CHECK_TX_TIMEOUT = 600 * 1000;
+const CHECK_TX_INTERVAL = settings.check_tx_interval;
+const CHECK_TX_TIMEOUT = settings.check_tx_timeout;
 const UNIT_SATOSHI = 100000000;
 
 console.log(settings);
