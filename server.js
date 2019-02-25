@@ -140,7 +140,7 @@ function cancel_process(id){
     clearTimeout(timeout_obj[id]);
     /* update db */
     //connect to mongodb
-    MongoClient.connect("mongodb://" + settings.host, function(err, client){
+    MongoClient.connect(settings.mongodb_uri, function(err, client){
         if(err){ return console.dir(err); }
         //use orderdb
         const db = client.db(settings.orderdb);
@@ -166,7 +166,7 @@ const timeout_process = (id) => {
     clearInterval(interval_obj[id]);
     /* update db */
     //connect to mongodb
-    MongoClient.connect("mongodb://" + settings.host, function(err, client){
+    MongoClient.connect(settings.mongodb_uri, function(err, client){
         if(err){ return console.dir(err); }
         //use orderdb
         const db = client.db(settings.orderdb);
@@ -197,7 +197,7 @@ function paid_process(id, confirmed_balance, unconfirmed_balance){
         clearTimeout(timeout_obj[id]);
         /* update db */
         //connect to mongodb
-        MongoClient.connect("mongodb://" + settings.host, function(err, client){
+        MongoClient.connect(settings.mongodb_uri, function(err, client){
             if(!err){
                 //use orderdb
                 const db = client.db(settings.orderdb);
@@ -269,7 +269,7 @@ function del_termination_null(target_srt){
 }
 
 /* get products info from db */
-MongoClient.connect("mongodb://" + settings.host, function(err, client){
+MongoClient.connect(settings.mongodb_uri, function(err, client){
     if(err) { return console.dir(err); }
     console.log("connected to db");
     const db = client.db(settings.productdb);
@@ -371,7 +371,7 @@ server.on('request', function(req, res){
 
                             /* regster order to db */
                             //connect to mongodb
-                            MongoClient.connect("mongodb://" + settings.host, function(err, client){
+                            MongoClient.connect(settings.mongodb_uri, function(err, client){
                                 if(err){ return console.dir(err); }
                                 console.log("connected to db");
                                 //use orderdb
@@ -507,9 +507,4 @@ server.on('request', function(req, res){
             break;
     }
 })
-<<<<<<< HEAD
 server.listen(settings.port, () => console.log('Listening on port ' + settings.port));
-=======
-server.listen(settings.port, settings.host);
-console.log("server listening " + settings.port);
->>>>>>> cda4545bb40175c9733047e63265fc9a6cb8d0a7
