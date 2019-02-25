@@ -1,9 +1,5 @@
 var http = require('http');
-<<<<<<< HEAD
 var https = require('https');
-=======
-const https = require('https');
->>>>>>> change protocol http to https
 var fs = require('fs');
 var ejs = require('ejs');
 var qs = require('querystring');
