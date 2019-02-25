@@ -507,4 +507,9 @@ server.on('request', function(req, res){
             break;
     }
 })
+<<<<<<< HEAD
 server.listen(settings.port, () => console.log('Listening on port ' + settings.port));
+=======
+server.listen(settings.port, settings.host);
+console.log("server listening " + settings.port);
+>>>>>>> cda4545bb40175c9733047e63265fc9a6cb8d0a7
