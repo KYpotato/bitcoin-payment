@@ -1,4 +1,5 @@
 var http = require('http');
+const https = require('https');
 var fs = require('fs');
 var ejs = require('ejs');
 var qs = require('querystring');
@@ -42,7 +43,6 @@ const check_tx = (id, purchase_amount) => {
     //check payment
 
     //watching payment
-    const https = require('https');
     switch(target_api){
         case API.chain_so:
             //chain.so
@@ -364,7 +364,7 @@ server.on('request', function(req, res){
                     var purchase_amount = query.num * Number(query.unit_price);
                     /* get invoice from web api */
                     var json_invoice;
-                    const apireq = http.request(settings.invoice_url + purchase_amount, (apires => {
+                    const apireq = https.request(settings.invoice_url + purchase_amount, (apires => {
                         apires.on('data', (chunk) => {
                             //parse invoice
                             json_invoice = JSON.parse(Buffer.from(chunk).toString('utf-8'));
