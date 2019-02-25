@@ -1,4 +1,5 @@
 var http = require('http');
+var https = require('https');
 var fs = require('fs');
 var ejs = require('ejs');
 var qs = require('querystring');
@@ -17,8 +18,8 @@ var id_to_btc_address = new Object();
 var paid_id = new Object();
 var timeout_id = new Object();
 
-const CHECK_TX_INTERVAL = 5 * 1000;
-const CHECK_TX_TIMEOUT = 600 * 1000;
+const CHECK_TX_INTERVAL = settings.check_tx_interval;
+const CHECK_TX_TIMEOUT = settings.check_tx_timeout;
 const UNIT_SATOSHI = 100000000;
 
 console.log(settings);
@@ -42,7 +43,6 @@ const check_tx = (id, purchase_amount) => {
     //check payment
 
     //watching payment
-    const https = require('https');
     switch(target_api){
         case API.chain_so:
             //chain.so
@@ -140,7 +140,7 @@ function cancel_process(id){
     clearTimeout(timeout_obj[id]);
     /* update db */
     //connect to mongodb
-    MongoClient.connect(settings.mongodb_uri, function(err, client){
+    MongoClient.connect(settings.mongodb_orders_uri, function(err, client){
         if(err){ return console.dir(err); }
         //use orderdb
         const db = client.db(settings.orderdb);
@@ -166,7 +166,7 @@ const timeout_process = (id) => {
     clearInterval(interval_obj[id]);
     /* update db */
     //connect to mongodb
-    MongoClient.connect(settings.mongodb_uri, function(err, client){
+    MongoClient.connect(settings.mongodb_orders_uri, function(err, client){
         if(err){ return console.dir(err); }
         //use orderdb
         const db = client.db(settings.orderdb);
@@ -197,7 +197,7 @@ function paid_process(id, confirmed_balance, unconfirmed_balance){
         clearTimeout(timeout_obj[id]);
         /* update db */
         //connect to mongodb
-        MongoClient.connect(settings.mongodb_uri, function(err, client){
+        MongoClient.connect(settings.mongodb_orders_uri, function(err, client){
             if(!err){
                 //use orderdb
                 const db = client.db(settings.orderdb);
@@ -269,7 +269,7 @@ function del_termination_null(target_srt){
 }
 
 /* get products info from db */
-MongoClient.connect(settings.mongodb_uri, function(err, client){
+MongoClient.connect(settings.mongodb_products_uri, function(err, client){
     if(err) { return console.dir(err); }
     console.log("connected to db");
     const db = client.db(settings.productdb);
@@ -296,6 +296,7 @@ MongoClient.connect(settings.mongodb_uri, function(err, client){
 
 server.on('request', function(req, res){
     switch(req.url){
+        case '/':
         case '/home':
             console.log('----'+ req.url + '-----');
             if(req.method === "POST"){
@@ -371,7 +372,7 @@ server.on('request', function(req, res){
 
                             /* regster order to db */
                             //connect to mongodb
-                            MongoClient.connect(settings.mongodb_uri, function(err, client){
+                            MongoClient.connect(settings.mongodb_orders_uri, function(err, client){
                                 if(err){ return console.dir(err); }
                                 console.log("connected to db");
                                 //use orderdb
