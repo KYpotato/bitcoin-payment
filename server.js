@@ -228,6 +228,9 @@ function paid_process(id, confirmed_balance, unconfirmed_balance){
                                     }
                                     else{
                                         console.log('error:' + resuponse.statusCode + body);
+                                        for(var n in body){
+                                            console.log(n);
+                                        }
                                     }
                                 })
                             }
