@@ -1,33 +1,33 @@
 <!DOCTYPE html>
 <html lang="ja">
-    <head>
-        <title>購入</title>
-        <meta charset="utf-8">
-        <script type="text/javascript">
-            function calc_purchase_amount(){
-                var unit_price = document.getElementsByName("unit_price");
-                var number = document.getElementsByName("num");
-                document.getElementById("purchase_amount").innerText = String(unit_price[0].value * number[0].value);
-            }
-        </script>
-    </head>
-    <body onload="calc_purchase_amount()">
-        <p><%= product_name %></p>
-        <img src="<%= img_path %>">
-        <br>
-        <p><%= product_name %>の説明</p>
-        <form method="POST" action="/payment">
-            個数<input type="number" name="num" min="1" step="1" max="5" value="1" onchange="calc_purchase_amount()" /> <br>
-            <input type="hidden" name="unit_price" value="<%= unit_price %>">
-            価格<span id="purchase_amount"> </span><br>
-            メールアドレス<input type="email" name="email_address"> <br>
-            お届け先<input type="text" name="home_address"> <br>
-            氏名<input type="text" name="name"> <br>
-            <input type="radio" name="payment_method" value="onchain" checked>BTC(on chain)<br>
-            <input type="radio" name="payment_method" value="lightning">BTC(lightning network)<br>
-            <input type="submit" value="buy">
-            <input type="button" onclick="location.href='/home'" value="cancel"> <br>
-            <input type="hidden" name="product" value="<%= product_name %>">
-        </form>
-    </body>
+  <head>
+    <title>購入</title>
+    <meta charset="utf-8">
+    <script type="text/javascript">
+      function calc_purchase_amount(){
+        var unit_price = document.getElementsByName("unit_price");
+        var number = document.getElementsByName("num");
+        document.getElementById("purchase_amount").innerText = String(unit_price[0].value * number[0].value);
+      }
+    </script>
+  </head>
+  <body onload="calc_purchase_amount()">
+    <p><%= product_name %></p>
+    <img src="<%= img_path %>">
+    <br>
+    <p><%= product_name %>の説明</p>
+    <form method="POST" action="/payment">
+      個数<input type="number" name="num" min="1" step="1" max="5" value="1" onchange="calc_purchase_amount()" /> <br>
+      <input type="hidden" name="unit_price" value="<%= unit_price %>">
+      価格<span id="purchase_amount"> </span><br>
+      メールアドレス<input type="email" name="email_address"> <br>
+      お届け先<input type="text" name="home_address"> <br>
+      氏名<input type="text" name="name"> <br>
+      <input type="radio" name="payment_method" value="onchain" checked>BTC(on chain)<br>
+      <input type="radio" name="payment_method" value="lightning">BTC(lightning network)<br>
+      <input type="submit" value="buy">
+      <input type="button" onclick="location.href='/home'" value="cancel"> <br>
+      <input type="hidden" name="product" value="<%= product_name %>">
+    </form>
+  </body>
 </html>
