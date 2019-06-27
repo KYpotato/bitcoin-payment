@@ -28,7 +28,7 @@ exports.productdb = ;
 exports.check_tx_interval = ;
 exports.check_tx_timeout = ;
 ```
-`brew services start mongodb`  
+`brew services start mongodb` or `mongod --dbpath MONGODB_DATA_PATH`  
 make products data  
 ex
 ```
