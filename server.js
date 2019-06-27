@@ -140,7 +140,7 @@ function cancel_process(id){
     clearTimeout(timeout_obj[id]);
     /* update db */
     //connect to mongodb
-    MongoClient.connect(settings.mongodb_orders_uri, function(err, client){
+    MongoClient.connect(settings.mongodb_orders_uri, { useNewUrlParser: true }, function(err, client){
         if(err){ return console.dir(err); }
         //use orderdb
         const db = client.db(settings.orderdb);
@@ -166,7 +166,7 @@ const timeout_process = (id) => {
     clearInterval(interval_obj[id]);
     /* update db */
     //connect to mongodb
-    MongoClient.connect(settings.mongodb_orders_uri, function(err, client){
+    MongoClient.connect(settings.mongodb_orders_uri, { useNewUrlParser: true }, function(err, client){
         if(err){ return console.dir(err); }
         //use orderdb
         const db = client.db(settings.orderdb);
@@ -197,7 +197,7 @@ function paid_process(id, confirmed_balance, unconfirmed_balance){
         clearTimeout(timeout_obj[id]);
         /* update db */
         //connect to mongodb
-        MongoClient.connect(settings.mongodb_orders_uri, function(err, client){
+        MongoClient.connect(settings.mongodb_orders_uri, { useNewUrlParser: true }, function(err, client){
             if(!err){
                 //use orderdb
                 const db = client.db(settings.orderdb);
@@ -269,7 +269,7 @@ function del_termination_null(target_srt){
 }
 
 /* get products info from db */
-MongoClient.connect(settings.mongodb_products_uri, function(err, client){
+MongoClient.connect(settings.mongodb_products_uri, { useNewUrlParser: true }, function(err, client){
     if(err) { return console.dir(err); }
     console.log("connected to db");
     const db = client.db(settings.productdb);
@@ -372,7 +372,7 @@ server.on('request', function(req, res){
 
                             /* regster order to db */
                             //connect to mongodb
-                            MongoClient.connect(settings.mongodb_orders_uri, function(err, client){
+                            MongoClient.connect(settings.mongodb_orders_uri, { useNewUrlParser: true }, function(err, client){
                                 if(err){ return console.dir(err); }
                                 console.log("connected to db");
                                 //use orderdb
