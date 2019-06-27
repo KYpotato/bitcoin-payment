@@ -23,6 +23,8 @@
             メールアドレス<input type="email" name="email_address"> <br>
             お届け先<input type="text" name="home_address"> <br>
             氏名<input type="text" name="name"> <br>
+            <input type="radio" name="payment_method" value="onchain" checked>BTC(on chain)<br>
+            <input type="radio" name="payment_method" value="lightning">BTC(lightning network)<br>
             <input type="submit" value="buy">
             <input type="button" onclick="location.href='/home'" value="cancel"> <br>
             <input type="hidden" name="product" value="<%= product_name %>">

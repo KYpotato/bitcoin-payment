@@ -374,6 +374,7 @@ server.on('request', function(req, res){
                         //parse submited data
                         var query = qs.parse(req.data);
                         var purchase_amount = query.num * Number(query.unit_price);
+                        console.log(query.payment_method);
                         /* get invoice from web api */
                         var json_invoice;
                         const apireq = http.request(settings.invoice_url + purchase_amount, (apires => {
