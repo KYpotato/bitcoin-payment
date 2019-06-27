@@ -295,217 +295,230 @@ MongoClient.connect(settings.mongodb_products_uri, { useNewUrlParser: true }, fu
 });
 
 server.on('request', function(req, res){
-    switch(req.url){
-        case '/':
-        case '/home':
-            console.log('----'+ req.url + '-----');
-            if(req.method === "POST"){
-                console.log('cancel');
-                req.data = "";
-                req.on("readable", function(){
-                    //parse submited data
-                    req.data += req.read();
-                });
-                req.on("end", function(){
-                    var query = qs.parse(req.data);
-                    cancel_process(del_termination_null(query.id));
-                });
-            }
-            var data = ejs.render(template_home, {
-                product_name_1: products[0].name,
-                product_image_1: products[0].image,
-                unit_price_1: products[0].unit_price_s / UNIT_SATOSHI,
-                product_name_2: products[1].name,
-                product_image_2: products[1].image,
-                unit_price_2: products[1].unit_price_s / UNIT_SATOSHI,
-            })
-            res.writeHead(200, {'Content-Type':'text/html'});
-            res.write(data);
-            res.end();
-            break;
-            
-        case '/purchase1':
-        case '/purchase2':
-            console.log('----'+ req.url + '-----');
-            var product_id;
-            if(req.url == '/purchase1'){
-                product_id = 0;
-            }
-            else if(req.url == '/purchase2'){
-                product_id = 1;
-            }
-            else{
-                res.writeHead(404, {'Content-Type':'text/plain'});
-                res.write('not found');
+    let url_array = req.url.split('.');
+    let ext = url_array[url_array.length - 1];
+    let path = __dirname + '/public_html/' + req.url;
+    if(ext == 'png'){
+        console.log('----'+ req.url + '-----');
+        fs.readFile(path, function(err, data){
+            res.writeHead(200, {"Content-Type": "image/png"});
+            res.end(data);
+        })
+    }
+    else{
+        switch(req.url){
+            case '/':
+            case '/home':
+                console.log('----'+ req.url + '-----');
+                if(req.method === "POST"){
+                    console.log('cancel');
+                    req.data = "";
+                    req.on("readable", function(){
+                        //parse submited data
+                        req.data += req.read();
+                    });
+                    req.on("end", function(){
+                        var query = qs.parse(req.data);
+                        cancel_process(del_termination_null(query.id));
+                    });
+                }
+                var data = ejs.render(template_home, {
+                    product_name_1: products[0].name,
+                    product_image_1: products[0].image,
+                    unit_price_1: products[0].unit_price_s / UNIT_SATOSHI,
+                    product_name_2: products[1].name,
+                    product_image_2: products[1].image,
+                    unit_price_2: products[1].unit_price_s / UNIT_SATOSHI,
+                })
+                res.writeHead(200, {'Content-Type':'text/html'});
+                res.write(data);
                 res.end();
-                return;
-            }
-            var data = ejs.render(template_purchase, {
-                product_name: products[product_id].name,
-                unit_price: products[product_id].unit_price_s / UNIT_SATOSHI,
-                img_path: products[product_id].image
-            })
-            res.writeHead(200, {'Content-Type':'text/html'});
-            res.write(data);
-            res.end();
-            break;
-
-        case '/payment':
-            console.log('----'+ req.url + '-----');
-            //receive post(buy)
-            if(req.method === "POST"){
-                req.data = "";
-                req.on("readable", function(){
-                    req.data += req.read();
-                });
-                req.on("end", function(){
-                    //parse submited data
-                    var query = qs.parse(req.data);
-                    var purchase_amount = query.num * Number(query.unit_price);
-                    /* get invoice from web api */
-                    var json_invoice;
-                    const apireq = http.request(settings.invoice_url + purchase_amount, (apires => {
-                        apires.on('data', (chunk) => {
-                            //parse invoice
-                            json_invoice = JSON.parse(Buffer.from(chunk).toString('utf-8'));
-                            console.log(json_invoice.invoice);
-
-                            /* regster order to db */
-                            //connect to mongodb
-                            MongoClient.connect(settings.mongodb_orders_uri, { useNewUrlParser: true }, function(err, client){
-                                if(err){ return console.dir(err); }
-                                console.log("connected to db");
-                                //use orderdb
-                                const db = client.db(settings.orderdb);
-                                db.collection("orders", function(err, collection){
-                                    if(err){ return console.dir(err); }
-                                    /* 
-                                    product         :purduct name
-                                    num             :purchase number
-                                    email_address   :customer email address
-                                    home_address    :customer home address
-                                    btc_address     :bitcoin address
-                                    name            :customer name
-                                    cancel          :flag if canceled
-                                    paid            :flag if paid
-                                    timeout         :flag if timeout
-                                    purchase_amount :purchase amount(btc)
-                                    confirmed_balance   :confirmed balance(btc) when paid
-                                    unconfirmed_balance :unconfirmed balance(btc) when paid
-                                    */
-                                    var doc = [{
-                                        product: query.product, 
-                                        num: query.num, 
-                                        email_address: query.email_address, 
-                                        home_address:query.home_address, 
-                                        btc_address:json_invoice.btc_address,
-                                        name: query.name, 
-                                        cancel: false, 
-                                        paid: false, 
-                                        timeout: false,
-                                        purchase_amount: purchase_amount, 
-                                        confirmed_balance: 0,
-                                        unconfirmed_balance: 0}
-                                    ];
-                                    collection.insert(doc, function(err, result){
-                                        console.dir(result);
-                                        var new_id = del_termination_null(String(result["ops"][0]["_id"]));
-                                        //start checking transaction
-                                        if(id_to_btc_address[new_id]){
-                                            console.log("duplication id")
-                                        }
-                                        id_to_btc_address[new_id] = json_invoice.btc_address;
-                                        console.log("id:" + new_id);
-                                        console.log("address:" + id_to_btc_address[new_id]);
-                                        interval_obj[new_id] = setInterval(
-                                            function(){check_tx(new_id, purchase_amount)}, 
-                                            CHECK_TX_INTERVAL);
-                                        timeout_obj[new_id] = setTimeout(
-                                            function(){timeout_process(new_id)},
-                                            CHECK_TX_TIMEOUT);
-                                        console.log(id_to_btc_address[new_id]);
-                                        console.log(interval_obj[new_id]);
-
-                                        //make payment page
-                                        var data = ejs.render(template_payment, {
-                                            invoice: json_invoice.invoice,
-                                            id:new_id,
-                                            time_limit: CHECK_TX_TIMEOUT
-                                        })
-                                        res.writeHead(200, {'Content-Type':'text/html'});
-                                        res.write(data);
-                                        res.end();
-                                    })
-
-                                })
-                            })
-                        });
-                        apires.on('end', () => {
-                            console.log('No more data in responce');
-                        });
-                    }))
-                    apireq.on('error', (e) => {
-                        console.error(`problem with request: ${e.message}`);
-                    })
-                    apireq.end();
-                });
-            }
-            break;
-
-        case '/check_payment':
-            console.log('----'+ req.url + '-----');
-            if(req.method === "POST"){
-                req.data = "";
-                req.on("readable", function(){
-                    req.data += req.read();
-                });
-                req.on("end", function(){
-                    //parse id
-                    var ret_target_id = del_termination_null(qs.parse(req.data).id);
-                    console.log(paid_id[ret_target_id]);
-                    console.log(timeout_id[ret_target_id]);
-                    console.log(id_to_btc_address[ret_target_id]);
-                    if(paid_id[ret_target_id]){
-                        //paid 
-                        console.log('send paid info to client');
-                        res.write('paid');
-                        res.end ();
-                        delete paid_id[ret_target_id];
-                        if(timeout_id[ret_target_id]){ delete timeout_id[ret_target_id]; }
-                    }
-                    else if(timeout_id[ret_target_id]){
-                        //timeout
-                        console.log('return timeout to client');
-                        res.write('timeout');
-                        res.end ();
-                        delete timeout_id[ret_target_id];
-                    }
-                    else{
-                        //not paid yet
-                        console.log("return 'not yet' to client");
-                        res.write('not yet');
-                        res.end ();
-                    }
-                });
-            }
-            break;
-
-        case '/timeout':
-        case '/fin_payment':
-        default:
-            console.log('----'+ req.url + '-----');
-            fs.readFile(__dirname + '/public_html' + req.url + '.html', 'utf-8', function(err, data){
-                if(err){
+                break;
+                
+            case '/purchase1':
+            case '/purchase2':
+                console.log('----'+ req.url + '-----');
+                var product_id;
+                if(req.url == '/purchase1'){
+                    product_id = 0;
+                }
+                else if(req.url == '/purchase2'){
+                    product_id = 1;
+                }
+                else{
                     res.writeHead(404, {'Content-Type':'text/plain'});
                     res.write('not found');
                     res.end();
                     return;
                 }
+                console.log(products[product_id].image);
+                var data = ejs.render(template_purchase, {
+                    product_name: products[product_id].name,
+                    unit_price: products[product_id].unit_price_s / UNIT_SATOSHI,
+                    img_path: products[product_id].image
+                })
                 res.writeHead(200, {'Content-Type':'text/html'});
                 res.write(data);
                 res.end();
-            })
-            break;
+                break;
+
+            case '/payment':
+                console.log('----'+ req.url + '-----');
+                //receive post(buy)
+                if(req.method === "POST"){
+                    req.data = "";
+                    req.on("readable", function(){
+                        req.data += req.read();
+                    });
+                    req.on("end", function(){
+                        //parse submited data
+                        var query = qs.parse(req.data);
+                        var purchase_amount = query.num * Number(query.unit_price);
+                        /* get invoice from web api */
+                        var json_invoice;
+                        const apireq = http.request(settings.invoice_url + purchase_amount, (apires => {
+                            apires.on('data', (chunk) => {
+                                //parse invoice
+                                json_invoice = JSON.parse(Buffer.from(chunk).toString('utf-8'));
+                                console.log(json_invoice.invoice);
+
+                                /* regster order to db */
+                                //connect to mongodb
+                                MongoClient.connect(settings.mongodb_orders_uri, { useNewUrlParser: true }, function(err, client){
+                                    if(err){ return console.dir(err); }
+                                    console.log("connected to db");
+                                    //use orderdb
+                                    const db = client.db(settings.orderdb);
+                                    db.collection("orders", function(err, collection){
+                                        if(err){ return console.dir(err); }
+                                        /* 
+                                        product         :purduct name
+                                        num             :purchase number
+                                        email_address   :customer email address
+                                        home_address    :customer home address
+                                        btc_address     :bitcoin address
+                                        name            :customer name
+                                        cancel          :flag if canceled
+                                        paid            :flag if paid
+                                        timeout         :flag if timeout
+                                        purchase_amount :purchase amount(btc)
+                                        confirmed_balance   :confirmed balance(btc) when paid
+                                        unconfirmed_balance :unconfirmed balance(btc) when paid
+                                        */
+                                        var doc = [{
+                                            product: query.product, 
+                                            num: query.num, 
+                                            email_address: query.email_address, 
+                                            home_address:query.home_address, 
+                                            btc_address:json_invoice.btc_address,
+                                            name: query.name, 
+                                            cancel: false, 
+                                            paid: false, 
+                                            timeout: false,
+                                            purchase_amount: purchase_amount, 
+                                            confirmed_balance: 0,
+                                            unconfirmed_balance: 0}
+                                        ];
+                                        collection.insert(doc, function(err, result){
+                                            console.dir(result);
+                                            var new_id = del_termination_null(String(result["ops"][0]["_id"]));
+                                            //start checking transaction
+                                            if(id_to_btc_address[new_id]){
+                                                console.log("duplication id")
+                                            }
+                                            id_to_btc_address[new_id] = json_invoice.btc_address;
+                                            console.log("id:" + new_id);
+                                            console.log("address:" + id_to_btc_address[new_id]);
+                                            interval_obj[new_id] = setInterval(
+                                                function(){check_tx(new_id, purchase_amount)}, 
+                                                CHECK_TX_INTERVAL);
+                                            timeout_obj[new_id] = setTimeout(
+                                                function(){timeout_process(new_id)},
+                                                CHECK_TX_TIMEOUT);
+                                            console.log(id_to_btc_address[new_id]);
+                                            console.log(interval_obj[new_id]);
+
+                                            //make payment page
+                                            var data = ejs.render(template_payment, {
+                                                invoice: json_invoice.invoice,
+                                                id:new_id,
+                                                time_limit: CHECK_TX_TIMEOUT
+                                            })
+                                            res.writeHead(200, {'Content-Type':'text/html'});
+                                            res.write(data);
+                                            res.end();
+                                        })
+
+                                    })
+                                })
+                            });
+                            apires.on('end', () => {
+                                console.log('No more data in responce');
+                            });
+                        }))
+                        apireq.on('error', (e) => {
+                            console.error(`problem with request: ${e.message}`);
+                        })
+                        apireq.end();
+                    });
+                }
+                break;
+
+            case '/check_payment':
+                console.log('----'+ req.url + '-----');
+                if(req.method === "POST"){
+                    req.data = "";
+                    req.on("readable", function(){
+                        req.data += req.read();
+                    });
+                    req.on("end", function(){
+                        //parse id
+                        var ret_target_id = del_termination_null(qs.parse(req.data).id);
+                        console.log(paid_id[ret_target_id]);
+                        console.log(timeout_id[ret_target_id]);
+                        console.log(id_to_btc_address[ret_target_id]);
+                        if(paid_id[ret_target_id]){
+                            //paid 
+                            console.log('send paid info to client');
+                            res.write('paid');
+                            res.end ();
+                            delete paid_id[ret_target_id];
+                            if(timeout_id[ret_target_id]){ delete timeout_id[ret_target_id]; }
+                        }
+                        else if(timeout_id[ret_target_id]){
+                            //timeout
+                            console.log('return timeout to client');
+                            res.write('timeout');
+                            res.end ();
+                            delete timeout_id[ret_target_id];
+                        }
+                        else{
+                            //not paid yet
+                            console.log("return 'not yet' to client");
+                            res.write('not yet');
+                            res.end ();
+                        }
+                    });
+                }
+                break;
+
+            case '/timeout':
+            case '/fin_payment':
+            default:
+                console.log('----'+ req.url + '-----');
+                fs.readFile(__dirname + '/public_html' + req.url + '.html', 'utf-8', function(err, data){
+                    if(err){
+                        res.writeHead(404, {'Content-Type':'text/plain'});
+                        res.write('not found');
+                        res.end();
+                        return;
+                    }
+                    res.writeHead(200, {'Content-Type':'text/html'});
+                    res.write(data);
+                    res.end();
+                })
+                break;
+        }
     }
 })
 server.listen(settings.port, () => console.log('Listening on port ' + settings.port));
