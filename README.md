@@ -28,4 +28,5 @@ exports.productdb = ;
 exports.check_tx_interval = ;
 exports.check_tx_timeout = ;
 ```
+`brew services start mongodb`  
 `node server.js`  
