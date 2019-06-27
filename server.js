@@ -4,6 +4,7 @@ var fs = require('fs');
 var ejs = require('ejs');
 var qs = require('querystring');
 var settings = require('./settings');
+const lightning = require('./lightning');
 var ObjectID = require('mongodb').ObjectID;
 var request_slack = require('request');
 var server = http.createServer();
@@ -294,7 +295,7 @@ MongoClient.connect(settings.mongodb_products_uri, { useNewUrlParser: true }, fu
   });
 });
 
-server.on('request', function(req, res){
+server.on('request', async function(req, res){
   let url_array = req.url.split('.');
   let ext = url_array[url_array.length - 1];
   let path = __dirname + '/public_html/' + req.url;
