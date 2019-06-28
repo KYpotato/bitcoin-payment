@@ -12,125 +12,127 @@ exports.getinfo = async function() {
 
   let result = await LndRpc.getInfo();
   console.log(result);
+  return result;
 }
 
 exports.lookupinvoice = async function(rhash) {
   await LndRpc.toMain();
   
-  let result = await LndRpc.lookupInvoice({rHashStr: Buffer.from(rhash, 'base64').toString('hex')});
-  console.log(result);
+  // let result = await LndRpc.lookupInvoice({rHashStr: Buffer.from(rhash, 'base64').toString('hex')});
+  let result = await LndRpc.lookupInvoice({rHashStr: rhash});
+  return result;
 }
 
 exports.addinvoice = async function(value) {
   await LndRpc.toMain();
 
   let result = await LndRpc.addInvoice({value: value});
-  console.log(result);
+  return result;
 }
 
 exports.channelbalance = async function() {
   await LndRpc.toMain();
 
   let result = await LndRpc.channelBalance();
-  console.log(result);
+  return result;
 }
 
 exports.decodepayreq = async function(payreq) {
   await LndRpc.toMain();
 
   let result = await LndRpc.decodePayReq({payReq: payreq});
-  console.log(result);
+  return result;
 }
 
 exports.getlocalservice = async function() {
   await LndRpc.toMain();
 
   let result = await LndRpc.getLocalService();
-  console.log(result);
+  return result;
 }
 
 exports.getremoteservice = async function() {
   await LndRpc.toMain();
 
   let result = await LndRpc.getRemoteService();
-  console.log(result);
+  return result;
 }
 
 exports.hasservicemain = async function() {
   await LndRpc.toMain();
 
   let result = await LndRpc.hasServiceMain();
-  console.log(result);
+  return result;
 }
 
 exports.hasserviceunlocker = async function() {
   await LndRpc.toMain();
 
   let result = await LndRpc.hasServiceUnlocker();
-  console.log(result);
+  return result;
 }
 
 exports.ismain = async function() {
   await LndRpc.toMain();
 
   let result = await LndRpc.isMain();
-  console.log(result);
+  return result;
 }
 
 exports.isserverdown = async function() {
   await LndRpc.toMain();
 
   let result = await LndRpc.isServerDown();
-  console.log(result);
+  return result;
 }
 
 exports.isserverdownmain = async function() {
   await LndRpc.toMain();
 
   let result = await LndRpc.isServerDownMain();
-  console.log(result);
+  return result;
 }
 
 exports.isserverdownunlocker = async function() {
   await LndRpc.toMain();
 
   let result = await LndRpc.isServerDownUnlocker();
-  console.log(result);
+  return result;
 }
 
 exports.isunlocker = async function() {
   await LndRpc.toMain();
 
   let result = await LndRpc.isUnlocker();
-  console.log(result);
+  return result;
 }
 
 exports.listchannels = async function() {
   await LndRpc.toMain();
 
   let result = await LndRpc.listChannels();
-  console.log(result);
+  return result;
 }
 
 exports.newaddress = async function() {
   await LndRpc.toMain();
 
   let result = await LndRpc.newAddress();
-  console.log(result);
+  return result;
 }
 
-exports.request = async function() {
+exports.request = async function(value) {
   await LndRpc.toMain();
 
   let result = await LndRpc.request({
-      satoshis: 1000
+      satoshis: value
   });
-  console.log(result);
+  return result;
 }
 
 exports.walletbalance = async function() {
   await LndRpc.toMain();
 
   let result = await LndRpc.walletBalance();
-  console.log(result);
+  return result;
 }

@@ -3,6 +3,7 @@ var https = require('https');
 var fs = require('fs');
 var ejs = require('ejs');
 var qs = require('querystring');
+const Long = require('long');
 var settings = require('./settings');
 const lightning = require('./lightning');
 var ObjectID = require('mongodb').ObjectID;
@@ -15,7 +16,8 @@ var products = [];
 var MongoClient = require('mongodb').MongoClient;
 var interval_obj = new Object();
 var timeout_obj = new Object();
-var id_to_btc_address = new Object();
+var id_to_paymethod = new Object();        // onchain or lightning
+var id_to_address_or_rhash = new Object(); // btc address or ln payreq hash
 var paid_id = new Object();
 var timeout_id = new Object();
 
@@ -39,8 +41,17 @@ var NETWORK = {
 }
 const network = NETWORK.testnet;
 
+const check_payment = (id, purchase_amount) => {
+  if(id_to_paymethod[id] == 'onchain') {
+    check_tx(id, purchase_amount);
+  }
+  else if(id_to_paymethod[id] == 'lightning'){
+    check_ln_paid(id);
+  }
+}
+
 const check_tx = (id, purchase_amount) => {
-  console.log("checking transaction:" + id_to_btc_address[id] + " amount:" + purchase_amount);
+  console.log("checking transaction:" + id_to_address_or_rhash[id] + " amount:" + purchase_amount);
   //check payment
 
   //watching payment
@@ -55,7 +66,7 @@ const check_tx = (id, purchase_amount) => {
           target_network = "BTCTEST";
       }
       const ex_apireq_chain_so = https.request
-      ('https://chain.so/api/v2/get_address_balance/' + target_network + '/' + id_to_btc_address[id], (ex_apires) => {
+      ('https://chain.so/api/v2/get_address_balance/' + target_network + '/' + id_to_address_or_rhash[id], (ex_apires) => {
           ex_apires.on('data', (chunk) => {
               //console.log("balance json:" + chunk);
               try{
@@ -114,7 +125,7 @@ const check_tx = (id, purchase_amount) => {
           target_network = "test3";
       }
       const ex_apireq_block_cypher = https.request
-      ('https://api.blockcypher.com/v1/btc/test3/addrs/' + id_to_btc_address[id] + '/balance', (ex_apires) => {
+      ('https://api.blockcypher.com/v1/btc/test3/addrs/' + id_to_address_or_rhash[id] + '/balance', (ex_apires) => {
           ex_apires.on('data', (chunk) => {
               //console.log(`BODY: ${chunk}`);
               var json_blockchain = JSON.parse(Buffer.from(chunk).toString('utf-8'));
@@ -131,6 +142,18 @@ const check_tx = (id, purchase_amount) => {
       break;
     default:
       break;
+  }
+}
+
+const check_ln_paid = async (id) => {
+  console.log("checking payreq:" + id_to_address_or_rhash[id]);
+  let result = await lightning.lookupinvoice(id_to_address_or_rhash[id]);
+  console.log(result);
+  if(result.settled == true){
+    console.log('call paid_process');
+    console.log(result.value);
+    //clear check payment 
+    paid_process(id, result.value.toInt(), 0);
   }
 }
 
@@ -156,7 +179,8 @@ function cancel_process(id){
     })
   })
   //clear array
-  delete id_to_btc_address[id];
+  delete id_to_paymethod[id];
+  delete id_to_address_or_rhash[id];
   delete interval_obj[id];
   delete timeout_obj[id];
 }
@@ -182,7 +206,8 @@ const timeout_process = (id) => {
     })
   })
   //clear array
-  delete id_to_btc_address[id];
+  delete id_to_paymethod[id];
+  delete id_to_address_or_rhash[id];
   delete interval_obj[id];
   delete timeout_obj[id];
   //register timeout
@@ -247,7 +272,8 @@ function paid_process(id, confirmed_balance, unconfirmed_balance){
       }
     })
     //clear array
-    delete id_to_btc_address[id];
+    delete id_to_paymethod[id];
+    delete id_to_address_or_rhash[id];
     delete interval_obj[id];
     delete timeout_obj[id];
     //register paid id
@@ -269,6 +295,16 @@ function del_termination_null(target_srt){
   }
 }
 
+function btc_to_satoshi(str_btc) {
+  var result = 0;
+  let tmp_btc = str_btc.split('.');
+
+  result += Number(tmp_btc[0]) * UNIT_SATOSHI;
+  result += Number(tmp_btc[1] + '0'.repeat(String(UNIT_SATOSHI).length - 1 - tmp_btc[1].length));
+
+  return result;
+}
+
 /* get products info from db */
 MongoClient.connect(settings.mongodb_products_uri, { useNewUrlParser: true }, function(err, client){
   if(err) { return console.dir(err); }
@@ -280,7 +316,7 @@ MongoClient.connect(settings.mongodb_products_uri, { useNewUrlParser: true }, fu
     name            :product name
     unit_price_s    :unit price(satoshi)
     image           :image path of product
-      */
+    */
     collection.find().toArray(function(err, items){
       for(var i = 0; i < items.length; i++){
         products.push(items[i]);
@@ -371,97 +407,183 @@ server.on('request', async function(req, res){
           req.on("readable", function(){
             req.data += req.read();
           });
-          req.on("end", function(){
+          req.on("end", async function(){
             //parse submited data
             var query = qs.parse(req.data);
             var purchase_amount = query.num * Number(query.unit_price);
             console.log(query.payment_method);
-            /* get invoice from web api */
-            var json_invoice;
-            const apireq = http.request(settings.invoice_url + purchase_amount, (apires => {
-              apires.on('data', (chunk) => {
-                //parse invoice
-                json_invoice = JSON.parse(Buffer.from(chunk).toString('utf-8'));
-                console.log(json_invoice.invoice);
+            if(query.payment_method == 'onchain'){
+              /* get invoice from web api */
+              var json_invoice;
+              const apireq = http.request(settings.invoice_url + purchase_amount, (apires => {
+                apires.on('data', (chunk) => {
+                  //parse invoice
+                  json_invoice = JSON.parse(Buffer.from(chunk).toString('utf-8'));
+                  console.log(json_invoice.invoice);
 
-                /* regster order to db */
-                //connect to mongodb
-                MongoClient.connect(settings.mongodb_orders_uri, { useNewUrlParser: true }, function(err, client){
-                  if(err){ return console.dir(err); }
-                  console.log("connected to db");
-                  //use orderdb
-                  const db = client.db(settings.orderdb);
-                  db.collection("orders", function(err, collection){
+                  /* regster order to db */
+                  //connect to mongodb
+                  MongoClient.connect(settings.mongodb_orders_uri, { useNewUrlParser: true }, function(err, client){
                     if(err){ return console.dir(err); }
-                    /* 
-                    product         :purduct name
-                    num             :purchase number
-                    email_address   :customer email address
-                    home_address    :customer home address
-                    btc_address     :bitcoin address
-                    name            :customer name
-                    cancel          :flag if canceled
-                    paid            :flag if paid
-                    timeout         :flag if timeout
-                    purchase_amount :purchase amount(btc)
-                    confirmed_balance   :confirmed balance(btc) when paid
-                    unconfirmed_balance :unconfirmed balance(btc) when paid
-                    */
-                    var doc = [{
-                      product: query.product, 
-                      num: query.num, 
-                      email_address: query.email_address, 
-                      home_address:query.home_address, 
-                      btc_address:json_invoice.btc_address,
-                      name: query.name, 
-                      cancel: false, 
-                      paid: false, 
-                      timeout: false,
-                      purchase_amount: purchase_amount, 
-                      confirmed_balance: 0,
-                      unconfirmed_balance: 0}
-                    ];
-                    collection.insert(doc, function(err, result){
-                      console.dir(result);
-                      var new_id = del_termination_null(String(result["ops"][0]["_id"]));
-                      //start checking transaction
-                      if(id_to_btc_address[new_id]){
-                        console.log("duplication id")
-                      }
-                      id_to_btc_address[new_id] = json_invoice.btc_address;
-                      console.log("id:" + new_id);
-                      console.log("address:" + id_to_btc_address[new_id]);
-                      interval_obj[new_id] = setInterval(
-                        function(){check_tx(new_id, purchase_amount)}, 
-                        CHECK_TX_INTERVAL);
-                      timeout_obj[new_id] = setTimeout(
-                        function(){timeout_process(new_id)},
-                        CHECK_TX_TIMEOUT);
-                      console.log(id_to_btc_address[new_id]);
-                      console.log(interval_obj[new_id]);
+                    console.log("connected to db");
+                    //use orderdb
+                    const db = client.db(settings.orderdb);
+                    db.collection("orders", function(err, collection){
+                      if(err){ return console.dir(err); }
+                      /* 
+                      product         :purduct name
+                      num             :purchase number
+                      email_address   :customer email address
+                      home_address    :customer home address
+                      payment_method  :onchain or lightning
+                      invoice         :bitcoin address or lightning payreq hash
+                      name            :customer name
+                      cancel          :flag if canceled
+                      paid            :flag if paid
+                      timeout         :flag if timeout
+                      purchase_amount :purchase amount(btc)
+                      confirmed_balance   :confirmed balance(btc) when paid
+                      unconfirmed_balance :unconfirmed balance(btc) when paid
+                      */
+                      var doc = [{
+                        product: query.product, 
+                        num: query.num, 
+                        email_address: query.email_address, 
+                        home_address:query.home_address, 
+                        payment_method:query.payment_method,
+                        invoice:json_invoice.btc_address,
+                        name: query.name, 
+                        cancel: false, 
+                        paid: false, 
+                        timeout: false,
+                        purchase_amount: purchase_amount, 
+                        confirmed_balance: 0,
+                        unconfirmed_balance: 0}
+                      ];
+                      collection.insert(doc, function(err, result){
+                        console.dir(result);
+                        var new_id = del_termination_null(String(result["ops"][0]["_id"]));
+                        //start checking transaction
+                        if(id_to_address_or_rhash[new_id]){
+                          console.log("duplication id")
+                        }
+                        id_to_paymethod[new_id] = query.payment_method;
+                        id_to_address_or_rhash[new_id] = json_invoice.btc_address;
+                        console.log("id:" + new_id);
+                        console.log("address:" + id_to_address_or_rhash[new_id]);
+                        interval_obj[new_id] = setInterval(
+                          function(){check_payment(new_id, purchase_amount)}, 
+                          CHECK_TX_INTERVAL);
+                        timeout_obj[new_id] = setTimeout(
+                          function(){timeout_process(new_id)},
+                          CHECK_TX_TIMEOUT);
+                        console.log(id_to_address_or_rhash[new_id]);
+                        console.log(interval_obj[new_id]);
 
-                      //make payment page
-                      var data = ejs.render(template_payment, {
-                        invoice: json_invoice.invoice,
-                        id:new_id,
-                        time_limit: CHECK_TX_TIMEOUT
+                        //make payment page
+                        var data = ejs.render(template_payment, {
+                          invoice: json_invoice.invoice,
+                          id:new_id,
+                          time_limit: CHECK_TX_TIMEOUT
+                        })
+                        res.writeHead(200, {'Content-Type':'text/html'});
+                        res.write(data);
+                        res.end();
                       })
-                      res.writeHead(200, {'Content-Type':'text/html'});
-                      res.write(data);
-                      res.end();
-                    })
 
+                    })
                   })
+                });
+                apires.on('end', () => {
+                  console.log('No more data in responce');
+                });
+              }))
+              apireq.on('error', (e) => {
+                console.error(`problem with request: ${e.message}`);
+              })
+              apireq.end();
+            }
+            else {
+              /* get invoice from lightnig node */
+              console.log('lightning');
+              let lnd_result = await lightning.addinvoice(btc_to_satoshi(String(purchase_amount))); 
+              console.log(lnd_result.rHash.toString('hex'));
+              console.log(lnd_result.paymentRequest);
+
+              /* regster order to db */
+              //connect to mongodb
+              MongoClient.connect(settings.mongodb_orders_uri, { useNewUrlParser: true }, function(err, client){
+                if(err){ return console.dir(err); }
+                console.log("connected to db");
+                //use orderdb
+                const db = client.db(settings.orderdb);
+                db.collection("orders", function(err, collection){
+                  if(err){ return console.dir(err); }
+                  /* 
+                  product         :purduct name
+                  num             :purchase number
+                  email_address   :customer email address
+                  home_address    :customer home address
+                  payment_method  :onchain or lightning
+                  invoice         :bitcoin address or lightning payreq hash
+                  name            :customer name
+                  cancel          :flag if canceled
+                  paid            :flag if paid
+                  timeout         :flag if timeout
+                  purchase_amount :purchase amount(btc)
+                  confirmed_balance   :confirmed balance(btc) when paid
+                  --unconfirmed_balance :unconfirmed balance(btc) when paid--
+                  */
+                  var doc = [{
+                    product: query.product, 
+                    num: query.num, 
+                    email_address: query.email_address, 
+                    home_address:query.home_address, 
+                    payment_method:query.payment_method,
+                    invoice: lnd_result.paymentRequest,
+                    name: query.name, 
+                    cancel: false, 
+                    paid: false, 
+                    timeout: false,
+                    purchase_amount: purchase_amount, 
+                    confirmed_balance: 0,
+                    // unconfirmed_balance: 0
+                  }];
+                  collection.insert(doc, function(err, result){
+                    console.dir(result);
+                    var new_id = del_termination_null(String(result["ops"][0]["_id"]));
+                    //start checking transaction
+                    if(id_to_address_or_rhash[new_id]){
+                      console.log("duplication id")
+                    }
+                    id_to_paymethod[new_id] = query.payment_method;
+                    id_to_address_or_rhash[new_id] = lnd_result.rHash.toString('hex');
+                    console.log("id:" + new_id);
+                    console.log("invoice hash:" + id_to_address_or_rhash[new_id]);
+                    interval_obj[new_id] = setInterval(
+                      function(){check_payment(new_id, purchase_amount)}, 
+                      CHECK_TX_INTERVAL);
+                    timeout_obj[new_id] = setTimeout(
+                      function(){timeout_process(new_id)},
+                      CHECK_TX_TIMEOUT);
+                    console.log(id_to_address_or_rhash[new_id]);
+                    console.log(interval_obj[new_id]);
+
+                    //make payment page
+                    var data = ejs.render(template_payment, {
+                      invoice: lnd_result.paymentRequest,
+                      id:new_id,
+                      time_limit: CHECK_TX_TIMEOUT
+                    })
+                    res.writeHead(200, {'Content-Type':'text/html'});
+                    res.write(data);
+                    res.end();
+                  })
+
                 })
-              });
-              apires.on('end', () => {
-                console.log('No more data in responce');
-              });
-            }))
-            apireq.on('error', (e) => {
-              console.error(`problem with request: ${e.message}`);
-            })
-            apireq.end();
+              })
+              
+            }
           });
         }
         break;
@@ -476,9 +598,10 @@ server.on('request', async function(req, res){
           req.on("end", function(){
             //parse id
             var ret_target_id = del_termination_null(qs.parse(req.data).id);
+            console.log(ret_target_id);
             console.log(paid_id[ret_target_id]);
             console.log(timeout_id[ret_target_id]);
-            console.log(id_to_btc_address[ret_target_id]);
+            console.log(id_to_address_or_rhash[ret_target_id]);
             if(paid_id[ret_target_id]){
               //paid 
               console.log('send paid info to client');
