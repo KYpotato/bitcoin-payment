@@ -3,6 +3,7 @@ var https = require('https');
 var fs = require('fs');
 var ejs = require('ejs');
 var qs = require('querystring');
+const rp = require('request-promise');
 const Long = require('long');
 var settings = require('./settings');
 const lightning = require('./lightning');
@@ -50,7 +51,7 @@ const check_payment = (id, purchase_amount) => {
   }
 }
 
-const check_tx = (id, purchase_amount) => {
+const check_tx = async (id, purchase_amount) => {
   console.log("checking transaction:" + id_to_address_or_rhash[id] + " amount:" + purchase_amount);
   //check payment
 
@@ -65,38 +66,38 @@ const check_tx = (id, purchase_amount) => {
       else{
           target_network = "BTCTEST";
       }
-      const ex_apireq_chain_so = https.request
-      ('https://chain.so/api/v2/get_address_balance/' + target_network + '/' + id_to_address_or_rhash[id], (ex_apires) => {
-          ex_apires.on('data', (chunk) => {
-              //console.log("balance json:" + chunk);
-              try{
-                  var json_blockchain = JSON.parse(Buffer.from(chunk).toString('utf-8'));
-                  var confirmed_balance = Number(json_blockchain.data.confirmed_balance);
-                  var unconfirmed_balance = Number(json_blockchain.data.unconfirmed_balance);
-                  console.log("confirmed_balance:" + confirmed_balance);
-                  console.log("unconfirmed_balance:" + unconfirmed_balance);
-                  console.log("purcase_amount:" + purchase_amount);
-                  console.log("address:" + json_blockchain.data.address);
-                  var sum_balance = confirmed_balance + Number(unconfirmed_balance);
-                  if(sum_balance >= purchase_amount){
-                      console.log('call paid_process');
-                      //clear check payment 
-                      paid_process(id, confirmed_balance, unconfirmed_balance);
-                  }
-              } 
-              catch (e){
-                  console.log("except at get json(balance):" + e);
-                  console.log("json:" + chunk);
-              }
-          });
-          ex_apires.on('end', () => {
-              console.log('No more data in responce.');
-          });
+
+      const url = 'https://chain.so/api/v2/get_address_balance/' + target_network + '/' + id_to_address_or_rhash[id];
+      let request_op = {
+        url: url,
+        method: 'GET',
+        json: true
+      }
+      let responce = await rp(request_op).catch(e => {
+        console.log("get balance failed:" + e);
+        throw new Error("get balance failed:" + e);
       })
-      ex_apireq_chain_so.on('error', (e) => {
-          console.error(`problem with request: ${e.message}`);
-      });
-      ex_apireq_chain_so.end();
+
+      if(responce.status == "success"){
+        let confirmed_balance = btc_to_satoshi(responce.data.confirmed_balance);
+        let unconfirmed_balance = btc_to_satoshi(responce.data.unconfirmed_balance);
+        console.log("confirmed_balance:" + confirmed_balance);
+        console.log("unconfirmed_balance:" + unconfirmed_balance);
+        console.log("purcase_amount:" + purchase_amount);
+        console.log("address:" + responce.data.address);
+        var sum_balance = confirmed_balance + unconfirmed_balance;
+        if(sum_balance >= purchase_amount * UNIT_SATOSHI) {
+          console.log('call paid_process');
+          //clear check payment 
+          paid_process(id, confirmed_balance, unconfirmed_balance);
+        }
+        else {
+          console.log("purchace amount:" + purchase_amount + " balance of receiving address:" + sum_balance);
+        }
+      }
+      else {
+        console.log("problem with request", responce);
+      }
       break;
     case API.blockchain_info:
       //blockchain.info
@@ -414,94 +415,89 @@ server.on('request', async function(req, res){
             console.log(query.payment_method);
             if(query.payment_method == 'onchain'){
               /* get invoice from web api */
-              var json_invoice;
-              const apireq = http.request(settings.invoice_url + purchase_amount, (apires => {
-                apires.on('data', (chunk) => {
-                  //parse invoice
-                  json_invoice = JSON.parse(Buffer.from(chunk).toString('utf-8'));
-                  console.log(json_invoice.invoice);
-
-                  /* regster order to db */
-                  //connect to mongodb
-                  MongoClient.connect(settings.mongodb_orders_uri, { useNewUrlParser: true }, function(err, client){
-                    if(err){ return console.dir(err); }
-                    console.log("connected to db");
-                    //use orderdb
-                    const db = client.db(settings.orderdb);
-                    db.collection("orders", function(err, collection){
-                      if(err){ return console.dir(err); }
-                      /* 
-                      product         :purduct name
-                      num             :purchase number
-                      email_address   :customer email address
-                      home_address    :customer home address
-                      payment_method  :onchain or lightning
-                      invoice         :bitcoin address or lightning payreq hash
-                      name            :customer name
-                      cancel          :flag if canceled
-                      paid            :flag if paid
-                      timeout         :flag if timeout
-                      purchase_amount :purchase amount(btc)
-                      confirmed_balance   :confirmed balance(btc) when paid
-                      unconfirmed_balance :unconfirmed balance(btc) when paid
-                      */
-                      var doc = [{
-                        product: query.product, 
-                        num: query.num, 
-                        email_address: query.email_address, 
-                        home_address:query.home_address, 
-                        payment_method:query.payment_method,
-                        invoice:json_invoice.btc_address,
-                        name: query.name, 
-                        cancel: false, 
-                        paid: false, 
-                        timeout: false,
-                        purchase_amount: purchase_amount, 
-                        confirmed_balance: 0,
-                        unconfirmed_balance: 0}
-                      ];
-                      collection.insert(doc, function(err, result){
-                        console.dir(result);
-                        var new_id = del_termination_null(String(result["ops"][0]["_id"]));
-                        //start checking transaction
-                        if(id_to_address_or_rhash[new_id]){
-                          console.log("duplication id")
-                        }
-                        id_to_paymethod[new_id] = query.payment_method;
-                        id_to_address_or_rhash[new_id] = json_invoice.btc_address;
-                        console.log("id:" + new_id);
-                        console.log("address:" + id_to_address_or_rhash[new_id]);
-                        interval_obj[new_id] = setInterval(
-                          function(){check_payment(new_id, purchase_amount)}, 
-                          CHECK_TX_INTERVAL);
-                        timeout_obj[new_id] = setTimeout(
-                          function(){timeout_process(new_id)},
-                          CHECK_TX_TIMEOUT);
-                        console.log(id_to_address_or_rhash[new_id]);
-                        console.log(interval_obj[new_id]);
-
-                        //make payment page
-                        var data = ejs.render(template_payment, {
-                          invoice: json_invoice.invoice,
-                          id:new_id,
-                          time_limit: CHECK_TX_TIMEOUT
-                        })
-                        res.writeHead(200, {'Content-Type':'text/html'});
-                        res.write(data);
-                        res.end();
-                      })
-
-                    })
-                  })
-                });
-                apires.on('end', () => {
-                  console.log('No more data in responce');
-                });
-              }))
-              apireq.on('error', (e) => {
-                console.error(`problem with request: ${e.message}`);
+              const url = settings.invoice_url + purchase_amount;
+              let request_op = {
+                url: url,
+                method: 'GET',
+                json: true
+              }
+              let responce = await rp(request_op).catch(e => {
+                console.log("get balance failed:" + e);
+                throw new Error("get balance failed:" + e);
               })
-              apireq.end();
+              console.log(responce.invoice);
+              //connect to mongodb
+              MongoClient.connect(settings.mongodb_orders_uri, { useNewUrlParser: true }, function(err, client){
+                if(err){ return console.dir(err); }
+                console.log("connected to db");
+                //use orderdb
+                const db = client.db(settings.orderdb);
+                db.collection("orders", function(err, collection){
+                  if(err){ return console.dir(err); }
+                  /* 
+                  product         :purduct name
+                  num             :purchase number
+                  email_address   :customer email address
+                  home_address    :customer home address
+                  payment_method  :onchain or lightning
+                  invoice         :bitcoin address or lightning payreq hash
+                  name            :customer name
+                  cancel          :flag if canceled
+                  paid            :flag if paid
+                  timeout         :flag if timeout
+                  purchase_amount :purchase amount(btc)
+                  confirmed_balance   :confirmed balance(btc) when paid
+                  unconfirmed_balance :unconfirmed balance(btc) when paid
+                  */
+                  var doc = [{
+                    product: query.product, 
+                    num: query.num, 
+                    email_address: query.email_address, 
+                    home_address: query.home_address, 
+                    payment_method: query.payment_method,
+                    invoice: responce.btc_address,
+                    name: query.name, 
+                    cancel: false, 
+                    paid: false, 
+                    timeout: false,
+                    purchase_amount: purchase_amount, 
+                    confirmed_balance: 0,
+                    unconfirmed_balance: 0}
+                  ];
+                  collection.insert(doc, function(err, result){
+                    console.dir(result);
+                    var new_id = del_termination_null(String(result["ops"][0]["_id"]));
+                    //start checking transaction
+                    if(id_to_address_or_rhash[new_id]){
+                      console.log("duplication id")
+                    }
+                    id_to_paymethod[new_id] = query.payment_method;
+                    id_to_address_or_rhash[new_id] = responce.btc_address;
+                    console.log("id:" + new_id);
+                    console.log("address:" + id_to_address_or_rhash[new_id]);
+                    interval_obj[new_id] = setInterval(
+                      function(){check_payment(new_id, purchase_amount)}, 
+                      CHECK_TX_INTERVAL);
+                    timeout_obj[new_id] = setTimeout(
+                      function(){timeout_process(new_id)},
+                      CHECK_TX_TIMEOUT);
+                    console.log(id_to_address_or_rhash[new_id]);
+                    console.log(interval_obj[new_id]);
+
+                    //make payment page
+                    var data = ejs.render(template_payment, {
+                      invoice: responce.invoice,
+                      id:new_id,
+                      time_limit: CHECK_TX_TIMEOUT
+                    })
+                    res.writeHead(200, {'Content-Type':'text/html'});
+                    res.write(data);
+                    res.end();
+                  })
+
+                })
+              })
+
             }
             else {
               /* get invoice from lightnig node */
