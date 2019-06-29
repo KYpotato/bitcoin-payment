@@ -159,27 +159,23 @@ const check_ln_paid = async (id) => {
   }
 }
 
-function cancel_process(id){
+async function cancel_process(id){
   console.log("cancel_process:" + id);
   //clear interval and timeout
   clearInterval(interval_obj[id]);
   clearTimeout(timeout_obj[id]);
   /* update db */
-  //connect to mongodb
-  MongoClient.connect(settings.mongodb_orders_uri, { useNewUrlParser: true }, function(err, client){
-    if(err){ return console.dir(err); }
-    //use orderdb
-    const db = client.db(settings.orderdb);
-    db.collection("orders", function(err, collection){
-      if(err){ return console.dir(err); }
-      //update
-      var filter = {_id: ObjectID(id.toString())};               
-      var update_data = {$set:{cancel:true}};
-      collection.updateOne(filter, update_data, function(err, result){
-        console.log("update db:" + result);
-      })
-    })
-  })
+  var filter = {_id: ObjectID(id.toString())};
+  var update_data = {$set:{cancel:true}};
+  let result = await mongo.updateone(
+    settings.mongodb_orders_uri, 
+    settings.orderdb,
+    'orders',
+    filter,
+    update_data
+  );
+  console.log("update db:" + result);
+
   //clear array
   delete id_to_paymethod[id];
   delete id_to_address_or_rhash[id];
@@ -187,26 +183,22 @@ function cancel_process(id){
   delete timeout_obj[id];
 }
 
-const timeout_process = (id) => {
+const timeout_process = async (id) => {
   console.log("timeout_process:" + id);
   //clear interval
   clearInterval(interval_obj[id]);
   /* update db */
-  //connect to mongodb
-  MongoClient.connect(settings.mongodb_orders_uri, { useNewUrlParser: true }, function(err, client){
-    if(err){ return console.dir(err); }
-    //use orderdb
-    const db = client.db(settings.orderdb);
-    db.collection("orders", function(err, collection){
-      if(err){ return console.dir(err); }
-      //update
-      var filter = {_id: ObjectID(id.toString())};               
-      var update_data = {$set:{timeout:true}};
-      collection.updateOne(filter, update_data, function(err, result){
-        console.log("update db:" + result);
-      })
-    })
-  })
+  var filter = {_id: ObjectID(id.toString())};
+  var update_data = {$set:{timeout:true}};
+  let result = await mongo.updateone(
+    settings.mongodb_orders_uri,
+    settings.orderdb,
+    'orders',
+    filter,
+    update_data
+  );
+  console.log("update db:" + result);
+
   //clear array
   delete id_to_paymethod[id];
   delete id_to_address_or_rhash[id];
@@ -216,7 +208,7 @@ const timeout_process = (id) => {
   timeout_id[id] = true;
 }
 
-function paid_process(id, confirmed_balance, unconfirmed_balance){
+async function paid_process(id, confirmed_balance, unconfirmed_balance){
   console.log("paid_process:" + id);
   if(interval_obj[id] != null && id.length > 0){
     console.log('clear interval')
@@ -224,55 +216,42 @@ function paid_process(id, confirmed_balance, unconfirmed_balance){
     clearInterval(interval_obj[id]);
     clearTimeout(timeout_obj[id]);
     /* update db */
-    //connect to mongodb
-    MongoClient.connect(settings.mongodb_orders_uri, { useNewUrlParser: true }, function(err, client){
-      if(!err){
-        //use orderdb
-        const db = client.db(settings.orderdb);
-        db.collection("orders", function(err, collection){
-          if(!err){
-            //update
-            var filter = {_id: ObjectID(id.toString())};               
-            var update_data = {
-              $set:{
-                paid: true,
-                confirmed_balance: confirmed_balance,
-                unconfirmed_balance: unconfirmed_balance}};
-            collection.updateOne(filter, update_data, function(err, result){
-              console.log("update db:" + result);
-            })
-            //find
-            collection.find(filter).toArray((err, documents) => {
-              if  (!err){
-                //inform it to owner
-                var options = {
-                  url: settings.slack_address,
-                  headers: {"Content-type": "application/json",},
-                  json: {"text": documents[0].num + " of " + del_termination_null(documents[0].product) + " is sold"}
-                };
-                request_slack.post(options, function(err, resuponse, body){
-                  if(!err && resuponse.statusCode == 200){
-                    console.log(body.name);
-                  }
-                  else{
-                    console.log('error:' + resuponse.statusCode + body);
-                  }
-                })
-              }
-              else{
-                console.dir(err);
-              }
-            })
-          }
-          else{
-            console.dir(err); 
-          }
-        })
+    var filter = {_id: ObjectID(id.toString())};               
+    var update_data = {
+      $set:{
+        paid: true,
+        confirmed_balance: confirmed_balance,
+        unconfirmed_balance: unconfirmed_balance
+      }};
+    let result = await mongo.updateone(
+      settings.mongodb_orders_uri,
+      settings.orderdb,
+      'orders',
+      filter,
+      update_data
+    );
+    console.log(result);
+    //inform it to owner by slack
+    let docs = await mongo.get_docs(
+      settings.mongodb_orders_uri,
+      settings.orderdb,
+      'orders',
+      filter
+    )
+    var options = {
+      url: settings.slack_address,
+      headers: {"Content-type": "application/json",},
+      json: {"text": docs[0].num + " of " + del_termination_null(docs[0].product) + " is sold"}
+    };
+    request_slack.post(options, function(err, resuponse, body){
+      if(!err && resuponse.statusCode == 200){
+        console.log(body.name);
       }
       else{
-        console.dir(err); 
+        console.log('error:' + resuponse.statusCode + body);
       }
     })
+    
     //clear array
     delete id_to_paymethod[id];
     delete id_to_address_or_rhash[id];
@@ -308,7 +287,12 @@ function btc_to_satoshi(str_btc) {
 }
 
 async function read_products() {
-  const docs = await mongo.get_docs(settings.mongodb_products_uri, settings.productdb, 'products');
+  const docs = await mongo.get_docs(
+    settings.mongodb_products_uri,
+    settings.productdb,
+    'products',
+    {}
+  );
   // console.log(docs);
   for(doc of docs) {
     products.push(doc);
@@ -455,7 +439,12 @@ server.on('request', async function(req, res){
                 confirmed_balance: 0,
                 unconfirmed_balance: 0}
               ];
-              let result = await mongo.insert(settings.mongodb_orders_uri, settings.orderdb, 'orders', doc);
+              let result = await mongo.insert(
+                settings.mongodb_orders_uri,
+                settings.orderdb,
+                'orders',
+                doc
+              );
               console.dir(result);
               var new_id = del_termination_null(String(result["ops"][0]["_id"]));
               //start checking transaction
