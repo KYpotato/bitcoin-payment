@@ -483,78 +483,70 @@ server.on('request', async function(req, res){
               console.log(lnd_result.paymentRequest);
 
               /* regster order to db */
-              //connect to mongodb
-              MongoClient.connect(settings.mongodb_orders_uri, { useNewUrlParser: true }, function(err, client){
-                if(err){ return console.dir(err); }
-                console.log("connected to db");
-                //use orderdb
-                const db = client.db(settings.orderdb);
-                db.collection("orders", function(err, collection){
-                  if(err){ return console.dir(err); }
-                  /* 
-                  product         :purduct name
-                  num             :purchase number
-                  email_address   :customer email address
-                  home_address    :customer home address
-                  payment_method  :onchain or lightning
-                  invoice         :bitcoin address or lightning payreq hash
-                  name            :customer name
-                  cancel          :flag if canceled
-                  paid            :flag if paid
-                  timeout         :flag if timeout
-                  purchase_amount :purchase amount(btc)
-                  confirmed_balance   :confirmed balance(btc) when paid
-                  --unconfirmed_balance :unconfirmed balance(btc) when paid--
-                  */
-                  var doc = [{
-                    product: query.product, 
-                    num: query.num, 
-                    email_address: query.email_address, 
-                    home_address:query.home_address, 
-                    payment_method:query.payment_method,
-                    invoice: lnd_result.paymentRequest,
-                    name: query.name, 
-                    cancel: false, 
-                    paid: false, 
-                    timeout: false,
-                    purchase_amount: purchase_amount, 
-                    confirmed_balance: 0,
-                    // unconfirmed_balance: 0
-                  }];
-                  collection.insert(doc, function(err, result){
-                    console.dir(result);
-                    var new_id = del_termination_null(String(result["ops"][0]["_id"]));
-                    //start checking transaction
-                    if(id_to_address_or_rhash[new_id]){
-                      console.log("duplication id")
-                    }
-                    id_to_paymethod[new_id] = query.payment_method;
-                    id_to_address_or_rhash[new_id] = lnd_result.rHash.toString('hex');
-                    console.log("id:" + new_id);
-                    console.log("invoice hash:" + id_to_address_or_rhash[new_id]);
-                    interval_obj[new_id] = setInterval(
-                      function(){check_payment(new_id, purchase_amount)}, 
-                      CHECK_TX_INTERVAL);
-                    timeout_obj[new_id] = setTimeout(
-                      function(){timeout_process(new_id)},
-                      CHECK_TX_TIMEOUT);
-                    console.log(id_to_address_or_rhash[new_id]);
-                    console.log(interval_obj[new_id]);
+              /* 
+              product         :purduct name
+              num             :purchase number
+              email_address   :customer email address
+              home_address    :customer home address
+              payment_method  :onchain or lightning
+              invoice         :bitcoin address or lightning payreq hash
+              name            :customer name
+              cancel          :flag if canceled
+              paid            :flag if paid
+              timeout         :flag if timeout
+              purchase_amount :purchase amount(btc)
+              confirmed_balance   :confirmed balance(btc) when paid
+              --unconfirmed_balance :unconfirmed balance(btc) when paid--
+              */
+              var doc = [{
+                product: query.product, 
+                num: query.num, 
+                email_address: query.email_address, 
+                home_address:query.home_address, 
+                payment_method:query.payment_method,
+                invoice: lnd_result.rHash.toString('hex'),
+                name: query.name, 
+                cancel: false, 
+                paid: false, 
+                timeout: false,
+                purchase_amount: purchase_amount, 
+                confirmed_balance: 0,
+                // unconfirmed_balance: 0
+              }];
+              let result = await mongo.insert(
+                settings.mongodb_orders_uri,
+                settings.orderdb,
+                'orders',
+                doc
+              );
+              console.dir(result);
+              var new_id = del_termination_null(String(result["ops"][0]["_id"]));
+              //start checking transaction
+              if(id_to_address_or_rhash[new_id]){
+                console.log("duplication id")
+              }
+              id_to_paymethod[new_id] = query.payment_method;
+              id_to_address_or_rhash[new_id] = lnd_result.rHash.toString('hex');
+              console.log("id:" + new_id);
+              console.log("invoice hash:" + id_to_address_or_rhash[new_id]);
+              interval_obj[new_id] = setInterval(
+                function(){check_payment(new_id, purchase_amount)}, 
+                CHECK_TX_INTERVAL);
+              timeout_obj[new_id] = setTimeout(
+                function(){timeout_process(new_id)},
+                CHECK_TX_TIMEOUT);
+              console.log(id_to_address_or_rhash[new_id]);
+              console.log(interval_obj[new_id]);
 
-                    //make payment page
-                    var data = ejs.render(template_payment, {
-                      invoice: lnd_result.paymentRequest,
-                      id:new_id,
-                      time_limit: CHECK_TX_TIMEOUT
-                    })
-                    res.writeHead(200, {'Content-Type':'text/html'});
-                    res.write(data);
-                    res.end();
-                  })
-
-                })
+              //make payment page
+              var data = ejs.render(template_payment, {
+                invoice: lnd_result.paymentRequest,
+                id:new_id,
+                time_limit: CHECK_TX_TIMEOUT
               })
-              
+              res.writeHead(200, {'Content-Type':'text/html'});
+              res.write(data);
+              res.end();
             }
           });
         }
