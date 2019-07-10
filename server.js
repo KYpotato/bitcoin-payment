@@ -395,6 +395,9 @@ server.on('request', async function(req, res){
             var query = qs.parse(req.data);
             var purchase_amount = query.num * Number(query.unit_price);
             console.log(query.payment_method);
+
+            var address_rhash;
+            var invoice;
             if(query.payment_method == 'onchain'){
               /* get invoice from web api */
               const url = settings.invoice_url + purchase_amount;
@@ -402,152 +405,89 @@ server.on('request', async function(req, res){
                 url: url,
                 method: 'GET',
                 json: true
-              }
+              };
               let responce = await rp(request_op).catch(e => {
                 console.log("get balance failed:" + e);
                 throw new Error("get balance failed:" + e);
-              })
-              console.log(responce.invoice);
-              //register ordet to db
-              /* 
-              product         :purduct name
-              num             :purchase number
-              email_address   :customer email address
-              home_address    :customer home address
-              payment_method  :onchain or lightning
-              invoice         :bitcoin address or lightning payreq hash
-              name            :customer name
-              cancel          :flag if canceled
-              paid            :flag if paid
-              timeout         :flag if timeout
-              purchase_amount :purchase amount(btc)
-              confirmed_balance   :confirmed balance(btc) when paid
-              unconfirmed_balance :unconfirmed balance(btc) when paid
-              */
-              var doc = [{
-                product: query.product, 
-                num: query.num, 
-                email_address: query.email_address, 
-                home_address: query.home_address, 
-                payment_method: query.payment_method,
-                invoice: responce.btc_address,
-                name: query.name, 
-                cancel: false, 
-                paid: false, 
-                timeout: false,
-                purchase_amount: purchase_amount, 
-                confirmed_balance: 0,
-                unconfirmed_balance: 0}
-              ];
-              let result = await mongo.insert(
-                settings.mongodb_orders_uri,
-                settings.orderdb,
-                'orders',
-                doc
-              );
-              console.dir(result);
-              var new_id = del_termination_null(String(result["ops"][0]["_id"]));
-              //start checking transaction
-              if(id_to_address_or_rhash[new_id]){
-                console.log("duplication id")
-              }
-              id_to_paymethod[new_id] = query.payment_method;
-              id_to_address_or_rhash[new_id] = responce.btc_address;
-              console.log("id:" + new_id);
-              console.log("address:" + id_to_address_or_rhash[new_id]);
-              interval_obj[new_id] = setInterval(
-                function(){check_payment(new_id, purchase_amount)}, 
-                CHECK_TX_INTERVAL);
-              timeout_obj[new_id] = setTimeout(
-                function(){timeout_process(new_id)},
-                CHECK_TX_TIMEOUT);
-              console.log(id_to_address_or_rhash[new_id]);
-              console.log(interval_obj[new_id]);
-
-              //make payment page
-              var data = ejs.render(template_payment, {
-                invoice: responce.invoice,
-                id:new_id,
-                time_limit: CHECK_TX_TIMEOUT
-              })
-              res.writeHead(200, {'Content-Type':'text/html'});
-              res.write(data);
-              res.end();
-
+              });
+              address_rhash = responce.btc_address;
+              invoice = responce.invoice;
+              console.log(invoice);
             }
             else {
               /* get invoice from lightnig node */
               console.log('lightning');
-              let lnd_result = await lightning.addinvoice(btc_to_satoshi(String(purchase_amount))); 
-              console.log(lnd_result.rHash.toString('hex'));
-              console.log(lnd_result.paymentRequest);
-
-              /* regster order to db */
-              /* 
-              product         :purduct name
-              num             :purchase number
-              email_address   :customer email address
-              home_address    :customer home address
-              payment_method  :onchain or lightning
-              invoice         :bitcoin address or lightning payreq hash
-              name            :customer name
-              cancel          :flag if canceled
-              paid            :flag if paid
-              timeout         :flag if timeout
-              purchase_amount :purchase amount(btc)
-              confirmed_balance   :confirmed balance(btc) when paid
-              --unconfirmed_balance :unconfirmed balance(btc) when paid--
-              */
-              var doc = [{
-                product: query.product, 
-                num: query.num, 
-                email_address: query.email_address, 
-                home_address:query.home_address, 
-                payment_method:query.payment_method,
-                invoice: lnd_result.rHash.toString('hex'),
-                name: query.name, 
-                cancel: false, 
-                paid: false, 
-                timeout: false,
-                purchase_amount: purchase_amount, 
-                confirmed_balance: 0,
-                // unconfirmed_balance: 0
-              }];
-              let result = await mongo.insert(
-                settings.mongodb_orders_uri,
-                settings.orderdb,
-                'orders',
-                doc
-              );
-              console.dir(result);
-              var new_id = del_termination_null(String(result["ops"][0]["_id"]));
-              //start checking transaction
-              if(id_to_address_or_rhash[new_id]){
-                console.log("duplication id")
-              }
-              id_to_paymethod[new_id] = query.payment_method;
-              id_to_address_or_rhash[new_id] = lnd_result.rHash.toString('hex');
-              console.log("id:" + new_id);
-              console.log("invoice hash:" + id_to_address_or_rhash[new_id]);
-              interval_obj[new_id] = setInterval(
-                function(){check_payment(new_id, purchase_amount)}, 
-                CHECK_TX_INTERVAL);
-              timeout_obj[new_id] = setTimeout(
-                function(){timeout_process(new_id)},
-                CHECK_TX_TIMEOUT);
-              console.log(id_to_address_or_rhash[new_id]);
-              console.log(interval_obj[new_id]);
-
-              //make payment page
-              var data = ejs.render(template_payment, {
-                invoice: lnd_result.paymentRequest,
-                id:new_id,
-                time_limit: CHECK_TX_TIMEOUT
-              })
-              res.writeHead(200, {'Content-Type':'text/html'});
-              res.write(data);
-              res.end();
+              let lnd_result = await lightning.addinvoice(btc_to_satoshi(String(purchase_amount)));
+              address_rhash = lnd_result.rHash.toString('hex');
+              invoice = lnd_result.paymentRequest;
+              console.log(address_rhash);
+              console.log(invoice);
             }
+            /* regster order to db */
+            /* 
+            product         :purduct name
+            num             :purchase number
+            email_address   :customer email address
+            home_address    :customer home address
+            payment_method  :onchain or lightning
+            invoice         :bitcoin address or lightning payreq hash
+            name            :customer name
+            cancel          :flag if canceled
+            paid            :flag if paid
+            timeout         :flag if timeout
+            purchase_amount :purchase amount(btc)
+            confirmed_balance   :confirmed balance(btc) when paid
+            unconfirmed_balance :unconfirmed balance(btc) when paid
+            */
+            let doc = [{
+              product: query.product, 
+              num: query.num, 
+              email_address: query.email_address, 
+              home_address: query.home_address, 
+              payment_method: query.payment_method,
+              invoice: invoice,
+              name: query.name, 
+              cancel: false, 
+              paid: false, 
+              timeout: false,
+              purchase_amount: purchase_amount, 
+              confirmed_balance: 0,
+              unconfirmed_balance: 0
+            }];
+            let result = await mongo.insert(
+              settings.mongodb_orders_uri,
+              settings.orderdb,
+              'orders',
+              doc
+            );
+            console.dir(result);
+            var new_id = del_termination_null(String(result["ops"][0]["_id"]));
+            //start checking transaction
+            if(id_to_address_or_rhash[new_id]){
+              console.log("duplication id")
+            }
+            id_to_paymethod[new_id] = query.payment_method;
+            id_to_address_or_rhash[new_id] = address_rhash;
+            console.log("id:" + new_id);
+            console.log("address:" + id_to_address_or_rhash[new_id]);
+            interval_obj[new_id] = setInterval(
+              function(){check_payment(new_id, purchase_amount)}, 
+              CHECK_TX_INTERVAL);
+            timeout_obj[new_id] = setTimeout(
+              function(){timeout_process(new_id)},
+              CHECK_TX_TIMEOUT);
+            console.log(id_to_address_or_rhash[new_id]);
+            console.log(interval_obj[new_id]);
+
+            //make payment page
+            var data = ejs.render(template_payment, {
+              invoice: invoice,
+              id:new_id,
+              time_limit: CHECK_TX_TIMEOUT
+            });
+            res.writeHead(200, {'Content-Type':'text/html'});
+            res.write(data);
+            res.end();
           });
         }
         break;
