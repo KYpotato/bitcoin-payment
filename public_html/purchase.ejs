@@ -19,7 +19,7 @@
     <form method="POST" action="/payment">
       個数<input type="number" name="num" min="1" step="1" max="5" value="1" onchange="calc_purchase_amount()" /> <br>
       <input type="hidden" name="unit_price" value="<%= unit_price %>">
-      価格<span id="purchase_amount"> </span><br>
+      価格<span id="purchase_amount"> </span>BTC<br>
       メールアドレス<input type="email" name="email_address"> <br>
       お届け先<input type="text" name="home_address"> <br>
       氏名<input type="text" name="name"> <br>

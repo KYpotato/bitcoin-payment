@@ -351,31 +351,33 @@ server.on('request', async function(req, res){
         res.end();
         break;
           
-      case '/purchase1':
-      case '/purchase2':
+      case '/purchase':
         console.log('----'+ req.url + '-----');
-        var product_id;
-        if(req.url == '/purchase1'){
-          product_id = 0;
+        if(req.method === 'POST') {
+          req.data = "";
+          req.on("readable", function(){
+            //parse submited data
+            req.data += req.read();
+          });
+          req.on("end", function(){
+            var query = qs.parse(req.data);
+            var product_id = del_termination_null(query.product) - 1;
+            if(product_id < 0 || products.length < product_id){
+              res.writeHead(404, {'Content-Type':'text/plain'});
+              res.write('not found');
+              res.end();
+              return;
+            }
+            var data = ejs.render(template_purchase, {
+              product_name: products[product_id].name,
+              unit_price: products[product_id].unit_price_s / UNIT_SATOSHI,
+              img_path: products[product_id].image
+            })
+            res.writeHead(200, {'Content-Type':'text/html'});
+            res.write(data);
+            res.end();
+          });
         }
-        else if(req.url == '/purchase2'){
-          product_id = 1;
-        }
-        else{
-          res.writeHead(404, {'Content-Type':'text/plain'});
-          res.write('not found');
-          res.end();
-          return;
-        }
-        console.log(products[product_id].image);
-        var data = ejs.render(template_purchase, {
-          product_name: products[product_id].name,
-          unit_price: products[product_id].unit_price_s / UNIT_SATOSHI,
-          img_path: products[product_id].image
-        })
-        res.writeHead(200, {'Content-Type':'text/html'});
-        res.write(data);
-        res.end();
         break;
 
       case '/payment':

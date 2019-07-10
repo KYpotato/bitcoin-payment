@@ -6,11 +6,14 @@
   </head>
   <body>
     <% products.forEach(function(value, key) { %>
+      <form method="POST" action="/purchase">
       <h2><%= value.name %></h2>
       <img src="<%= value.image %>">
       <br>
       <p><%= value.unit_price_s %>satoshi</p>
-      <input type="button" onclick="location.href='/purchase<%= key + 1%>'" value="ビットコインで購入">
+      <input type="hidden" name="product" value="<%= key + 1 %>">
+      <input type="submit" value="ビットコインで購入">
+      </form>
     <% }); %>
   </body>
 </html>
