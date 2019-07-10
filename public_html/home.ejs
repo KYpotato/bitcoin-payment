@@ -5,16 +5,12 @@
     <meta charset="utf-8">
   </head>
   <body>
-    <h2><%= product_name_1 %></h2>
-    <!--<img src="<%= product_image_1 %>">-->
-    <br>
-    <p><%= unit_price_1 %>btc</p>
-    <input type="button" onclick="location.href='/purchase1'" value="ビットコインで購入">
-
-    <h2><%= product_name_2 %></h2>
-    <!-- <img src="<%= product_image_2 %>>"> -->
-    <br>
-    <p><%= unit_price_2 %>btc</p>
-    <input type="button" onclick="location.href='/purchase2'" value="ビットコインで購入">
+    <% products.forEach(function(value, key) { %>
+      <h2><%= value.name %></h2>
+      <img src="<%= value.image %>">
+      <br>
+      <p><%= value.unit_price_s %>satoshi</p>
+      <input type="button" onclick="location.href='/purchase<%= key + 1%>'" value="ビットコインで購入">
+    <% }); %>
   </body>
 </html>

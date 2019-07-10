@@ -331,6 +331,7 @@ server.on('request', async function(req, res){
       case '/home':
         console.log('----'+ req.url + '-----');
         if(req.method === "POST"){
+          // cancel process
           console.log('cancel');
           req.data = "";
           req.on("readable", function(){
@@ -343,12 +344,7 @@ server.on('request', async function(req, res){
           });
         }
         var data = ejs.render(template_home, {
-          product_name_1: products[0].name,
-          product_image_1: products[0].image,
-          unit_price_1: products[0].unit_price_s / UNIT_SATOSHI,
-          product_name_2: products[1].name,
-          product_image_2: products[1].image,
-          unit_price_2: products[1].unit_price_s / UNIT_SATOSHI,
+          products: products
         })
         res.writeHead(200, {'Content-Type':'text/html'});
         res.write(data);
